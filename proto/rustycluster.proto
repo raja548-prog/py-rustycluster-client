@@ -1,0 +1,566 @@
+syntax = "proto3";
+
+package rustycluster;
+
+service KeyValueService {
+  // Authentication operations
+  rpc Authenticate (AuthenticateRequest) returns (AuthenticateResponse);
+
+  // System operations
+  rpc Ping (PingRequest) returns (PingResponse);
+  rpc HealthCheck (PingRequest) returns (PingResponse);
+
+  // String operations
+  rpc Set (SetRequest) returns (SetResponse);
+  rpc Get (GetRequest) returns (GetResponse);
+  rpc Delete (DeleteRequest) returns (DeleteResponse);
+  rpc SetEx (SetExRequest) returns (SetExResponse);
+  rpc SetExpiry (SetExpiryRequest) returns (SetExpiryResponse);
+
+  // Numeric operations
+  rpc IncrBy (IncrByRequest) returns (IncrByResponse);
+  rpc DecrBy (DecrByRequest) returns (DecrByResponse);
+  rpc IncrByFloat (IncrByFloatRequest) returns (IncrByFloatResponse);
+
+  // Hash operations
+  rpc HSet (HSetRequest) returns (HSetResponse);
+  rpc HGet (HGetRequest) returns (HGetResponse);
+  rpc HGetAll (HGetAllRequest) returns (HGetAllResponse);
+  rpc HIncrBy (HIncrByRequest) returns (HIncrByResponse);
+  rpc HDecrBy (HDecrByRequest) returns (HDecrByResponse);
+  rpc HIncrByFloat (HIncrByFloatRequest) returns (HIncrByFloatResponse);
+  rpc HMSet (HMSetRequest) returns (HMSetResponse);
+  rpc HExists (HExistsRequest) returns (HExistsResponse);
+  rpc HDel (HDelRequest) returns (HDelResponse);
+  rpc HScan (HScanRequest) returns (HScanResponse);
+  rpc HLen (HLenRequest) returns (HLenResponse);
+  rpc HSetNX (HSetNXRequest) returns (HSetNXResponse);
+  rpc HExpire (HExpireRequest) returns (HExpireResponse);
+  rpc HSetBytes (HSetBytesRequest) returns (HSetBytesResponse);
+  rpc HGetBytes (HGetBytesRequest) returns (HGetBytesResponse);
+  rpc HScanBytes (HScanBytesRequest) returns (HScanBytesResponse);
+  rpc HGetAllBytes (HGetAllBytesRequest) returns (HGetAllBytesResponse);
+
+  // Set operations
+  rpc SAdd (SAddRequest) returns (SAddResponse);
+  rpc SMembers (SMembersRequest) returns (SMembersResponse);
+  rpc SRem (SRemRequest) returns (SRemResponse);
+  rpc SCard (SCardRequest) returns (SCardResponse);
+  rpc SScan (SScanRequest) returns (SScanResponse);
+
+  // Key operations
+  rpc SetNX (SetNXRequest) returns (SetNXResponse);
+  rpc Exists (ExistsRequest) returns (ExistsResponse);
+  rpc DelMultiple (DelMultipleRequest) returns (DelMultipleResponse);
+  rpc Keys (KeysRequest) returns (KeysResponse);
+  rpc MGet (MGetRequest) returns (MGetResponse);
+
+  // Script operations
+  rpc LoadScript (LoadScriptRequest) returns (LoadScriptResponse);
+  rpc EvalSha (EvalShaRequest) returns (EvalShaResponse);
+
+  // Batch operations
+  rpc BatchWrite (BatchWriteRequest) returns (BatchWriteResponse);
+}
+
+// Authentication operations
+message AuthenticateRequest {
+  string username = 1;
+  string creds = 2;
+}
+
+message AuthenticateResponse {
+  bool success = 1;
+  string session_token = 2;
+  string message = 3;
+}
+
+// String operations
+message SetRequest {
+  string key = 1;
+  string value = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message SetResponse {
+  bool success = 1;
+}
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  string value = 1;
+  bool found = 2;
+}
+
+message DeleteRequest {
+  string key = 1;
+  bool skip_replication = 2;
+  bool skip_site_replication = 3;
+}
+
+message DeleteResponse {
+  bool success = 1;
+}
+
+message SetExRequest {
+  string key = 1;
+  string value = 2;
+  uint64 ttl = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message SetExResponse {
+  bool success = 1;
+}
+
+message SetExpiryRequest {
+  string key = 1;
+  int64 ttl = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message SetExpiryResponse {
+  bool success = 1;
+}
+
+// Numeric operations
+message IncrByRequest {
+  string key = 1;
+  int64 value = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message IncrByResponse {
+  int64 new_value = 1;
+}
+
+message DecrByRequest {
+  string key = 1;
+  int64 value = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message DecrByResponse {
+  int64 new_value = 1;
+}
+
+message IncrByFloatRequest {
+  string key = 1;
+  double value = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message IncrByFloatResponse {
+  double new_value = 1;
+}
+
+// Hash operations
+message HSetRequest {
+  string key = 1;
+  string field = 2;
+  string value = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message HSetResponse {
+  bool success = 1;
+}
+
+message HGetRequest {
+  string key = 1;
+  string field = 2;
+}
+
+message HGetResponse {
+  string value = 1;
+  bool found = 2;
+}
+
+message HGetAllRequest {
+  string key = 1;
+}
+
+message HGetAllResponse {
+  map<string, string> fields = 1;
+}
+
+message HIncrByRequest {
+  string key = 1;
+  string field = 2;
+  int64 value = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message HIncrByResponse {
+  int64 new_value = 1;
+}
+
+message HDecrByRequest {
+  string key = 1;
+  string field = 2;
+  int64 value = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message HDecrByResponse {
+  int64 new_value = 1;
+}
+
+message HIncrByFloatRequest {
+  string key = 1;
+  string field = 2;
+  double value = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message HIncrByFloatResponse {
+  double new_value = 1;
+}
+
+// Hash multi-set operation
+message HMSetRequest {
+  string key = 1;
+  map<string, string> fields = 2;  // field-value pairs
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message HMSetResponse {
+  bool success = 1;
+}
+
+// Hash field exists operation
+message HExistsRequest {
+  string key = 1;
+  string field = 2;
+}
+
+message HExistsResponse {
+  bool exists = 1;
+}
+
+// Hash field delete operation
+message HDelRequest {
+  string key = 1;
+  repeated string fields = 2;  // Fields to delete
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message HDelResponse {
+  int32 deleted_count = 1;  // Number of fields that were deleted
+}
+
+// Hash scan operation
+message HScanRequest {
+  string key = 1;
+  uint64 cursor = 2;  // Cursor for pagination (0 to start)
+  optional string pattern = 3;  // Pattern to match field names
+  optional uint32 count = 4;  // Hint for number of elements to return
+}
+
+message HScanResponse {
+  uint64 next_cursor = 1;  // Next cursor (0 if scan is complete)
+  map<string, string> fields = 2;  // Field-value pairs found
+}
+
+// Hash length operation
+message HLenRequest {
+  string key = 1;
+}
+
+message HLenResponse {
+  int32 length = 1;  // Number of fields in the hash
+}
+
+// Hash set if not exists operation
+message HSetNXRequest {
+  string key = 1;
+  string field = 2;
+  string value = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message HSetNXResponse {
+  bool success = 1;  // true if field was set, false if field already existed
+}
+
+// Hash expire operation (sets TTL on hash fields)
+message HExpireRequest {
+  string key = 1;
+  int64 seconds = 2;
+  repeated string fields = 3;  // Fields to set expiry on
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message HExpireResponse {
+  int32 expired_count = 1;  // Number of fields that had expiry set
+}
+
+// Hash set bytes operation (binary safe)
+message HSetBytesRequest {
+  bytes key = 1;
+  bytes field = 2;
+  bytes value = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message HSetBytesResponse {
+  bool success = 1;
+}
+
+// Hash get bytes operation (binary safe)
+message HGetBytesRequest {
+  bytes key = 1;
+  bytes field = 2;
+}
+
+message HGetBytesResponse {
+  bytes value = 1;
+  bool found = 2;
+}
+
+// Hash scan bytes operation (binary safe)
+message HScanBytesRequest {
+  bytes key = 1;
+  uint64 cursor = 2;
+  optional bytes pattern = 3;
+  optional uint32 count = 4;
+}
+
+message HScanBytesResponse {
+  uint64 next_cursor = 1;
+  repeated HScanBytesField fields = 2;  // Field-value pairs as bytes
+}
+
+message HScanBytesField {
+  bytes field = 1;
+  bytes value = 2;
+}
+
+// Hash get all bytes operation (binary safe)
+message HGetAllBytesRequest {
+  bytes key = 1;
+}
+
+message HGetAllBytesResponse {
+  repeated HGetAllBytesField fields = 1;  // All field-value pairs as bytes
+}
+
+message HGetAllBytesField {
+  bytes field = 1;
+  bytes value = 2;
+}
+
+// Set if not exists operation
+message SetNXRequest {
+  string key = 1;
+  string value = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message SetNXResponse {
+  bool success = 1;  // true if key was set, false if key already existed
+}
+
+// Key exists operation
+message ExistsRequest {
+  string key = 1;
+}
+
+message ExistsResponse {
+  bool exists = 1;
+}
+
+// Multiple key delete operation
+message DelMultipleRequest {
+  repeated string keys = 1;  // Keys to delete
+  bool skip_replication = 2;
+  bool skip_site_replication = 3;
+}
+
+message DelMultipleResponse {
+  int32 deleted_count = 1;  // Number of keys that were deleted
+}
+
+// Keys pattern matching operation
+message KeysRequest {
+  string pattern = 1;  // Pattern to match keys (supports wildcards: *, ?, [])
+}
+
+message KeysResponse {
+  repeated string keys = 1;  // All keys matching the pattern
+}
+
+// Multiple get operation
+message MGetRequest {
+  repeated string keys = 1;  // Keys to retrieve values for
+}
+
+message MGetResponse {
+  repeated string values = 1;  // Values corresponding to keys (empty string if not found)
+}
+
+// Set add operation
+message SAddRequest {
+  string key = 1;
+  repeated string members = 2;  // Members to add to the set
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message SAddResponse {
+  int32 added_count = 1;  // Number of members that were added (not already in set)
+}
+
+// Set members operation
+message SMembersRequest {
+  string key = 1;
+}
+
+message SMembersResponse {
+  repeated string members = 1;  // All members of the set
+}
+
+// Set remove operation
+message SRemRequest {
+  string key = 1;
+  repeated string members = 2;  // Members to remove from the set
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message SRemResponse {
+  int32 removed_count = 1;  // Number of members that were removed
+}
+
+// Set cardinality operation
+message SCardRequest {
+  string key = 1;
+}
+
+message SCardResponse {
+  int32 cardinality = 1;  // Number of members in the set
+}
+
+// Set scan operation (cursor-based iteration for large sets)
+message SScanRequest {
+  string key = 1;
+  uint64 cursor = 2;
+  optional string pattern = 3;  // Glob-style pattern to filter members
+  optional uint32 count = 4;  // Hint for approximate members per iteration
+}
+
+message SScanResponse {
+  uint64 cursor = 1;  // Updated cursor for next iteration (0 when done)
+  repeated string members = 2;  // List of set members matching the scan
+}
+
+// Script load operation
+message LoadScriptRequest {
+  string script = 1;
+}
+
+message LoadScriptResponse {
+  bool success = 1;
+  string sha = 2;  // SHA hash of the loaded script
+}
+
+// Script execution operation
+message EvalShaRequest {
+  string sha = 1;
+  repeated string keys = 2;
+  repeated string args = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message EvalShaResponse {
+  bool success = 1;
+  string result = 2;  // Script execution result
+}
+
+// Batch operations
+message BatchOperation {
+  enum OperationType {
+    SET = 0;
+    DELETE = 1;
+    SETEX = 2;
+    SETEXPIRY = 3;
+    INCRBY = 4;
+    DECRBY = 5;
+    INCRBYFLOAT = 6;
+    HSET = 7;
+    HINCRBY = 8;
+    HDECRBY = 9;
+    HINCRBYFLOAT = 10;
+    HMSET = 11;
+    SETNX = 12;
+    EVALSHA = 13;
+    LOAD_SCRIPT = 14;
+    HDEL = 15;
+    SADD = 16;
+    DEL_MULTIPLE = 17;
+    HSETNX = 18;
+    HEXPIRE = 19;
+    HSET_BYTES = 20;
+    SREM = 21;
+  }
+
+  OperationType operation_type = 1;
+  string key = 2;
+  string value = 3;
+  optional string field = 4;  // For hash operations
+  optional int64 int_value = 5;  // For numeric operations
+  optional double float_value = 6;  // For float operations
+  optional uint64 ttl = 7;  // For expiry operations
+  map<string, string> hash_fields = 8;  // For HMSET operations
+  repeated string script_keys = 9;  // For EVALSHA operations
+  repeated string script_args = 10;  // For EVALSHA operations
+  optional string script_sha = 11;  // For EVALSHA operations
+  repeated string fields = 12;  // For HDEL operations (hash fields to delete)
+  repeated string members = 13;  // For SADD operations (set members to add)
+  repeated string keys = 14;  // For DEL_MULTIPLE operations (keys to delete)
+  optional bytes bytes_value = 15;  // For binary operations (HSET_BYTES)
+  optional int64 seconds = 16;  // For HEXPIRE operation
+  map<string, bytes> bytes_fields = 17;  // For binary hash operations
+}
+
+message BatchWriteRequest {
+  repeated BatchOperation operations = 1;
+  bool skip_replication = 2;
+  bool skip_site_replication = 3;
+}
+
+message BatchWriteResponse {
+  bool success = 1;
+  repeated bool operation_results = 2;  // Results for each operation in the batch
+}
+
+// System operations
+message PingRequest {
+  // Empty request
+}
+
+message PingResponse {
+  bool success = 1;
+  string message = 2;
+  int64 latency_ms = 3;  // Latency in milliseconds
+}

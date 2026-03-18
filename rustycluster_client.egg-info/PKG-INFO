@@ -1,3 +1,41 @@
+Metadata-Version: 2.4
+Name: rustycluster-client
+Version: 1.0.0
+Summary: Enterprise-grade Python gRPC client for the RustyCluster distributed key-value store
+Author-email: RustyCluster <support@rustycluster.io>
+License: MIT
+Project-URL: Homepage, https://github.com/rustycluster/rustycluster-python-client
+Project-URL: Documentation, https://docs.rustycluster.io/python-client
+Project-URL: Repository, https://github.com/rustycluster/rustycluster-python-client
+Project-URL: Issues, https://github.com/rustycluster/rustycluster-python-client/issues
+Keywords: grpc,key-value,distributed,redis,rustycluster
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Database
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Typing :: Typed
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: grpcio>=1.60.0
+Requires-Dist: protobuf>=4.25.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Provides-Extra: async
+Requires-Dist: grpcio>=1.60.0; extra == "async"
+Provides-Extra: dev
+Requires-Dist: grpcio-tools>=1.60.0; extra == "dev"
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: mypy>=1.7.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: types-protobuf>=4.24.0; extra == "dev"
+
 # RustyCluster Python Client
 
 Enterprise-grade Python gRPC client for [RustyCluster](https://github.com/rustycluster) — a distributed, Redis-compatible key-value store.
@@ -6,7 +44,6 @@ Enterprise-grade Python gRPC client for [RustyCluster](https://github.com/rustyc
 
 ## Features
 
-- **Zero-config startup** — drop a `rustycluster.yaml` in your project root and call `get_client()`
 - **One-line setup** — `get_client(config)` handles channel creation, auth, and interceptor wiring
 - **Full API coverage** — All 50+ RPC operations across strings, hashes, sets, numerics, scripts, and batch
 - **Automatic token injection** — gRPC interceptor transparently adds Bearer tokens to every call
@@ -15,7 +52,7 @@ Enterprise-grade Python gRPC client for [RustyCluster](https://github.com/rustyc
 - **Async support** — `AsyncRustyClusterClient` via `grpc.aio` for async/await workflows
 - **TLS / mTLS** — Full certificate configuration support
 - **Type-safe** — Full type annotations, `py.typed` marker, mypy-compatible
-- **Flexible config** — YAML file, `.env` file, environment variables, or direct instantiation
+- **Pydantic config** — Validated configuration with env var and `.env` file support
 - **BatchOperationBuilder** — Fluent builder for batch write operations
 
 ---
@@ -23,7 +60,7 @@ Enterprise-grade Python gRPC client for [RustyCluster](https://github.com/rustyc
 ## Installation
 
 ```bash
-pip install rustycluster-client pyyaml
+pip install rustycluster-client
 ```
 
 ### From source
@@ -32,41 +69,16 @@ pip install rustycluster-client pyyaml
 git clone https://github.com/rustycluster/rustycluster-python-client
 cd rustycluster-python-client
 pip install -e ".[dev]"
-pip install pyyaml
 ```
 
 ---
 
 ## Quickstart
 
-### Option 1 — YAML config file (recommended)
-
-Create `rustycluster.yaml` in your project root:
-
-```yaml
-rustycluster:
-  host: localhost
-  port: 50051
-  username: admin
-  password: secret
-```
-
-Then just call `get_client()` with no arguments:
-
-```python
-from rustycluster import get_client
-
-client = get_client()          # auto-reads rustycluster.yaml
-client.set("hello", "world")
-print(client.get("hello"))     # "world"
-client.close()
-```
-
-### Option 2 — Direct config
-
 ```python
 from rustycluster import get_client, RustyClusterConfig
 
+# 1. Configure
 config = RustyClusterConfig(
     host="localhost",
     port=50051,
@@ -74,12 +86,25 @@ config = RustyClusterConfig(
     password="secret",
 )
 
-with get_client(config) as client:
-    client.set("hello", "world")
-    print(client.get("hello"))   # "world"
+# 2. Get a client (authenticates automatically)
+client = get_client(config)
+
+# 3. Use it
+client.set("hello", "world")
+print(client.get("hello"))   # "world"
+
+client.close()
 ```
 
-### Option 3 — Environment variables
+### Context manager (recommended)
+
+```python
+with get_client(config) as client:
+    client.set("session:abc", "active")
+    print(client.exists("session:abc"))  # True
+```
+
+### From environment variables
 
 ```bash
 export RUSTYCLUSTER_HOST=myserver
@@ -91,10 +116,10 @@ export RUSTYCLUSTER_PASSWORD=secret
 ```python
 from rustycluster import get_client
 
-client = get_client()   # reads RUSTYCLUSTER_* env vars if no YAML found
+client = get_client()  # reads RUSTYCLUSTER_* env vars
 ```
 
-### Option 4 — .env file
+### From a .env file
 
 ```python
 from rustycluster import get_client, RustyClusterConfig
@@ -105,79 +130,9 @@ client = get_client(config)
 
 ---
 
-## YAML Configuration
-
-### File discovery order
-
-When you call `get_client()` with no arguments, the client searches for a config file in this order:
-
-| Priority | Location | Example |
-|---|---|---|
-| 1 | Project root | `./rustycluster.yaml` |
-| 2 | Config subfolder | `./config/rustycluster.yaml` |
-| 3 | Home directory | `~/.rustycluster.yaml` |
-| 4 | Environment variables | `RUSTYCLUSTER_*` prefix (fallback) |
-
-The first match wins. If none are found, it falls back to environment variables.
-
-### Full YAML reference
-
-```yaml
-rustycluster:
-
-  # ── Connection ──────────────────────────────────────────────────────────────
-  host: localhost
-  port: 50051
-
-  # ── Authentication ──────────────────────────────────────────────────────────
-  username: admin
-  password: secret
-
-  # ── TLS (optional) ──────────────────────────────────────────────────────────
-  use_tls: false
-  # tls_ca_cert_path: /path/to/ca.crt
-  # tls_client_cert_path: /path/to/client.crt   # mTLS
-  # tls_client_key_path: /path/to/client.key    # mTLS
-
-  # ── Timeouts & Retries ──────────────────────────────────────────────────────
-  timeout_seconds: 10.0
-  max_retries: 3
-  retry_backoff_base: 0.5
-  retry_backoff_max: 30.0
-
-  # ── Connection Pool ─────────────────────────────────────────────────────────
-  connection_pool_size: 5
-
-  # ── Misc ────────────────────────────────────────────────────────────────────
-  enable_compression: false
-  log_level: WARNING        # DEBUG, INFO, WARNING, ERROR
-```
-
-### Flat YAML (no nesting) also supported
-
-```yaml
-host: localhost
-port: 50051
-username: admin
-password: secret
-```
-
-### Load YAML explicitly
-
-```python
-from rustycluster import get_client, RustyClusterConfig
-
-config = RustyClusterConfig.from_yaml("path/to/rustycluster.yaml")
-client = get_client(config)
-```
-
----
-
 ## Configuration Reference
 
-All configuration options, their YAML keys, environment variable equivalents, and defaults:
-
-| YAML Key | Env Var | Default | Description |
+| Parameter | Env Var | Default | Description |
 |---|---|---|---|
 | `host` | `RUSTYCLUSTER_HOST` | `localhost` | Server hostname |
 | `port` | `RUSTYCLUSTER_PORT` | `50051` | gRPC port |
@@ -306,7 +261,6 @@ from rustycluster.exceptions import (
     TimeoutError,            # RPC timed out
     BatchOperationError,     # Batch write failure
     ScriptError,             # Lua script error
-    ConfigurationError,      # Bad config / missing YAML file
 )
 
 try:
@@ -323,33 +277,19 @@ except RustyClusterError as e:
 
 ### Retry Behaviour
 
-| gRPC Status | Behaviour | Notes |
+| gRPC Status | Retried? | Notes |
 |---|---|---|
-| `UNAVAILABLE` | ✅ Retry | Server temporarily down |
-| `DEADLINE_EXCEEDED` | ✅ Retry | Timeout, retry with backoff |
-| `INTERNAL` | ✅ Retry | Server-side error |
+| `UNAVAILABLE` | ✅ Yes | Server temporarily down |
+| `DEADLINE_EXCEEDED` | ✅ Yes | Timeout, retry with backoff |
+| `INTERNAL` | ✅ Yes | Server-side error |
 | `UNAUTHENTICATED` | 🔄 Re-auth | Re-authenticates, then retries once |
-| `INVALID_ARGUMENT` | ❌ No retry | Bad request, won't fix itself |
-| `NOT_FOUND` | ❌ No retry | Key missing |
-| `UNIMPLEMENTED` | ❌ No retry | Server doesn't support this RPC |
+| `INVALID_ARGUMENT` | ❌ No | Bad request, won't fix itself |
+| `NOT_FOUND` | ❌ No | Key missing |
+| `UNIMPLEMENTED` | ❌ No | Server doesn't support this RPC |
 
 ---
 
 ## TLS / mTLS
-
-```yaml
-rustycluster:
-  host: secure-server
-  port: 50051
-  username: admin
-  password: secret
-  use_tls: true
-  tls_ca_cert_path: /certs/ca.crt
-  tls_client_cert_path: /certs/client.crt   # mTLS only
-  tls_client_key_path: /certs/client.key    # mTLS only
-```
-
-Or via code:
 
 ```python
 config = RustyClusterConfig(
@@ -359,6 +299,7 @@ config = RustyClusterConfig(
     password="secret",
     use_tls=True,
     tls_ca_cert_path="/certs/ca.crt",
+    # mTLS:
     tls_client_cert_path="/certs/client.crt",
     tls_client_key_path="/certs/client.key",
 )
@@ -372,9 +313,11 @@ config = RustyClusterConfig(
 import asyncio
 from rustycluster import async_get_client, RustyClusterConfig
 
+config = RustyClusterConfig(host="localhost", port=50051,
+                             username="admin", password="secret")
+
 async def main():
-    # Uses rustycluster.yaml if present, otherwise env vars
-    async with await async_get_client() as client:
+    async with await async_get_client(config) as client:
         await client.set("hello", "world")
         value = await client.get("hello")
         print(value)  # "world"
@@ -427,18 +370,17 @@ while True:
 
 ```
 rustycluster-client/
-├── rustycluster.yaml             # ← Drop your config here
 ├── rustycluster/
-│   ├── __init__.py               # get_client(), async_get_client(), public API
-│   ├── client.py                 # RustyClusterClient (sync)
-│   ├── async_client.py           # AsyncRustyClusterClient
-│   ├── config.py                 # RustyClusterConfig (Pydantic)
-│   ├── auth.py                   # AuthManager
-│   ├── batch.py                  # BatchOperationBuilder
-│   ├── exceptions.py             # Exception hierarchy
-│   ├── interceptors.py           # gRPC interceptors (auth + logging)
-│   ├── retry.py                  # RetryPolicy + with_retry decorator
-│   ├── py.typed                  # PEP 561 marker
+│   ├── __init__.py           # get_client(), async_get_client(), public API
+│   ├── client.py             # RustyClusterClient (sync)
+│   ├── async_client.py       # AsyncRustyClusterClient
+│   ├── config.py             # RustyClusterConfig (Pydantic)
+│   ├── auth.py               # AuthManager
+│   ├── batch.py              # BatchOperationBuilder
+│   ├── exceptions.py         # Exception hierarchy
+│   ├── interceptors.py       # gRPC interceptors (auth + logging)
+│   ├── retry.py              # RetryPolicy + with_retry decorator
+│   ├── py.typed              # PEP 561 marker
 │   └── proto/
 │       ├── rustycluster_pb2.py
 │       └── rustycluster_pb2_grpc.py
@@ -467,9 +409,8 @@ rustycluster-client/
 ```bash
 # Install with dev dependencies
 pip install -e ".[dev]"
-pip install pyyaml
 
-# Regenerate proto stubs (macOS + Linux compatible)
+# Regenerate proto stubs
 ./scripts/generate_proto.sh
 
 # Run all tests
