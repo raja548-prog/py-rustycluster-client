@@ -1,39 +1,52 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# RustyCluster Client Configuration
+# RustyCluster Client Configuration (multi-cluster)
 # Place this file as:
 #   - rustycluster.yaml         (project root)
 #   - config/rustycluster.yaml  (config subfolder)
 #   - ~/.rustycluster.yaml      (home directory)
 #
-# The client auto-discovers this file when you call get_client() with no args.
+# The client auto-discovers this file when you call get_client("DB0").
 # ──────────────────────────────────────────────────────────────────────────────
 
 rustycluster:
 
-  # ── Connection ──────────────────────────────────────────────────────────────
-  # Comma-separated host:port list. The first entry is the primary; if it
-  # becomes unreachable the client fails over to the next entry in order.
-  nodes: "localhost:50051,localhost:50052,localhost:50053"
+  # ── Shared defaults ────────────────────────────────────────────────────────
+  # Every cluster below inherits these. Any field set on a cluster wins.
+  defaults:
 
-  # ── Authentication ──────────────────────────────────────────────────────────
-  username: testuser
-  password: testpass
+    # Authentication
+    username: testuser
+    password: testpass
 
-  # ── TLS (optional) ──────────────────────────────────────────────────────────
-  use_tls: false
-  # tls_ca_cert_path: /path/to/ca.crt
-  # tls_client_cert_path: /path/to/client.crt
-  # tls_client_key_path: /path/to/client.key
+    # TLS (optional)
+    use_tls: false
+    # tls_ca_cert_path: /path/to/ca.crt
+    # tls_client_cert_path: /path/to/client.crt
+    # tls_client_key_path: /path/to/client.key
 
-  # ── Timeouts & Retries ──────────────────────────────────────────────────────
-  timeout_seconds: 10.0
-  max_retries: 3
-  retry_backoff_base: 0.5
-  retry_backoff_max: 30.0
+    # Timeouts & retries
+    timeout_seconds: 10.0
+    max_retries: 3
+    retry_backoff_base: 0.5
+    retry_backoff_max: 30.0
 
-  # ── Connection Pool ─────────────────────────────────────────────────────────
-  connection_pool_size: 5
+    # Connection pool
+    connection_pool_size: 5
 
-  # ── Misc ────────────────────────────────────────────────────────────────────
-  enable_compression: false
-  log_level: WARNING
+    # Misc
+    enable_compression: false
+    log_level: WARNING
+
+  # ── Clusters ───────────────────────────────────────────────────────────────
+  # Each entry under `clusters` is a named cluster you fetch via
+  # `get_client("DB0")`. `nodes` is required; everything else falls back
+  # to `defaults`. Within `nodes`, the first entry is the primary; the
+  # client fails over to subsequent entries in order.
+  clusters:
+
+    DB0:
+      nodes: "localhost:50051,localhost:50052"
+
+    DB1:
+      nodes: "localhost:50053,localhost:50054"
+      timeout_seconds: 5.0          # per-cluster override

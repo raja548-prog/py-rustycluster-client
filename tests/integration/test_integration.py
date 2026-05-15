@@ -444,15 +444,19 @@ def mock_server():
 @pytest.fixture
 def client(mock_server):
     """Return a RustyClusterClient connected to the mock server."""
-    from rustycluster import RustyClusterConfig, get_client
+    from rustycluster import RustyClusterConfig, RustyClusterSettings, get_client
     target, _ = mock_server
-    config = RustyClusterConfig(
-        nodes=target,
-        username="admin",
-        password="secret",
-        max_retries=0,
+    settings = RustyClusterSettings(
+        clusters={
+            "test": RustyClusterConfig(
+                nodes=target,
+                username="admin",
+                password="secret",
+                max_retries=0,
+            ),
+        },
     )
-    c = get_client(config)
+    c = get_client("test", settings=settings)
     yield c
     c.close()
 
@@ -720,22 +724,30 @@ def _start_mock_server() -> tuple[grpc.Server, str]:
 
 class TestIntegrationFailover:
     def test_fails_over_when_primary_is_down(self, caplog):
-        from rustycluster import RustyClusterConfig, get_client
+        from rustycluster import (
+            RustyClusterConfig,
+            RustyClusterSettings,
+            get_client,
+        )
 
         server_a, target_a = _start_mock_server()
         server_b, target_b = _start_mock_server()
 
         try:
-            config = RustyClusterConfig(
-                nodes=f"{target_a},{target_b}",
-                username="admin",
-                password="secret",
-                max_retries=1,
-                retry_backoff_base=0.01,
-                retry_backoff_max=0.1,
-                timeout_seconds=2.0,
+            settings = RustyClusterSettings(
+                clusters={
+                    "failover": RustyClusterConfig(
+                        nodes=f"{target_a},{target_b}",
+                        username="admin",
+                        password="secret",
+                        max_retries=1,
+                        retry_backoff_base=0.01,
+                        retry_backoff_max=0.1,
+                        timeout_seconds=2.0,
+                    ),
+                },
             )
-            c = get_client(config)
+            c = get_client("failover", settings=settings)
             try:
                 assert c.set("failover:k", "v1") is True
                 assert c.get("failover:k") == "v1"
@@ -759,22 +771,30 @@ class TestIntegrationFailover:
             server_b.stop(grace=0)
 
     def test_raises_when_all_nodes_exhausted(self):
-        from rustycluster import RustyClusterConfig, get_client
+        from rustycluster import (
+            RustyClusterConfig,
+            RustyClusterSettings,
+            get_client,
+        )
         from rustycluster.exceptions import ConnectionError as RCConnectionError
 
         server_a, target_a = _start_mock_server()
         server_b, target_b = _start_mock_server()
 
-        config = RustyClusterConfig(
-            nodes=f"{target_a},{target_b}",
-            username="admin",
-            password="secret",
-            max_retries=1,
-            retry_backoff_base=0.01,
-            retry_backoff_max=0.1,
-            timeout_seconds=2.0,
+        settings = RustyClusterSettings(
+            clusters={
+                "exhaust": RustyClusterConfig(
+                    nodes=f"{target_a},{target_b}",
+                    username="admin",
+                    password="secret",
+                    max_retries=1,
+                    retry_backoff_base=0.01,
+                    retry_backoff_max=0.1,
+                    timeout_seconds=2.0,
+                ),
+            },
         )
-        c = get_client(config)
+        c = get_client("exhaust", settings=settings)
         try:
             server_a.stop(grace=0)
             server_b.stop(grace=0)

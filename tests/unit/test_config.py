@@ -1,15 +1,17 @@
-"""Unit tests for RustyClusterConfig."""
+"""Unit tests for RustyClusterConfig and RustyClusterSettings."""
 
 from __future__ import annotations
 
 import os
+import textwrap
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
 
-from rustycluster.config import RustyClusterConfig
+from rustycluster.config import RustyClusterConfig, RustyClusterSettings
+from rustycluster.exceptions import ConfigurationError
 
 
 class TestRustyClusterConfig:
@@ -127,3 +129,187 @@ class TestRustyClusterConfig:
         r = repr(config)
         assert "topsecret" not in r
         assert "admin" in r
+
+
+def _write_yaml(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / "rustycluster.yaml"
+    p.write_text(textwrap.dedent(body))
+    return p
+
+
+class TestRustyClusterSettings:
+    def test_defaults_merge_into_each_cluster(self, tmp_path):
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              defaults:
+                username: shared_user
+                password: shared_pass
+                timeout_seconds: 7.5
+              clusters:
+                DB0:
+                  nodes: "host-a:50051,host-b:50052"
+                DB1:
+                  nodes: "host-c:50053"
+        """)
+        settings = RustyClusterSettings.from_yaml(path)
+
+        assert sorted(settings.clusters) == ["DB0", "DB1"]
+        db0 = settings.get("DB0")
+        db1 = settings.get("DB1")
+
+        assert db0.username == "shared_user"
+        assert db0.password.get_secret_value() == "shared_pass"
+        assert db0.timeout_seconds == 7.5
+        assert db0.targets == ["host-a:50051", "host-b:50052"]
+
+        assert db1.username == "shared_user"
+        assert db1.timeout_seconds == 7.5
+        assert db1.targets == ["host-c:50053"]
+
+    def test_cluster_overrides_win(self, tmp_path):
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              defaults:
+                username: shared_user
+                timeout_seconds: 10.0
+                max_retries: 3
+              clusters:
+                DB0:
+                  nodes: "host-a:50051"
+                DB1:
+                  nodes: "host-b:50051"
+                  timeout_seconds: 2.0
+                  username: db1_user
+        """)
+        settings = RustyClusterSettings.from_yaml(path)
+
+        db0 = settings.get("DB0")
+        db1 = settings.get("DB1")
+
+        assert db0.timeout_seconds == 10.0
+        assert db0.username == "shared_user"
+
+        assert db1.timeout_seconds == 2.0
+        assert db1.username == "db1_user"
+        assert db1.max_retries == 3  # inherited
+
+    def test_defaults_optional(self, tmp_path):
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              clusters:
+                only:
+                  nodes: "host:50051"
+        """)
+        settings = RustyClusterSettings.from_yaml(path)
+        assert settings.get("only").targets == ["host:50051"]
+
+    def test_missing_clusters_section_raises(self, tmp_path):
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              defaults:
+                username: u
+        """)
+        with pytest.raises(ConfigurationError, match="clusters"):
+            RustyClusterSettings.from_yaml(path)
+
+    def test_empty_clusters_section_raises(self, tmp_path):
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              clusters: {}
+        """)
+        with pytest.raises(ConfigurationError, match="at least one cluster"):
+            RustyClusterSettings.from_yaml(path)
+
+    def test_cluster_missing_nodes_raises_with_name(self, tmp_path):
+        # No defaults.nodes either, so the cluster has none -> validation fails
+        # because RustyClusterConfig's default is "localhost:50051"; cover the
+        # explicit-empty case instead.
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              clusters:
+                broken:
+                  nodes: ""
+        """)
+        with pytest.raises(ConfigurationError, match="broken"):
+            RustyClusterSettings.from_yaml(path)
+
+    def test_unknown_cluster_lookup_raises(self, tmp_path):
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              clusters:
+                DB0:
+                  nodes: "host:50051"
+        """)
+        settings = RustyClusterSettings.from_yaml(path)
+        with pytest.raises(ConfigurationError, match="Unknown cluster"):
+            settings.get("DB99")
+
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(ConfigurationError, match="not found"):
+            RustyClusterSettings.from_yaml(tmp_path / "does-not-exist.yaml")
+
+    def test_per_cluster_password_is_secret(self, tmp_path):
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              defaults:
+                password: shared_secret
+              clusters:
+                DB0:
+                  nodes: "host:50051"
+        """)
+        settings = RustyClusterSettings.from_yaml(path)
+        assert "shared_secret" not in repr(settings.get("DB0"))
+
+    def test_names_preserve_declaration_order(self, tmp_path):
+        path = _write_yaml(tmp_path, """
+            rustycluster:
+              clusters:
+                zeta:
+                  nodes: "host:50051"
+                alpha:
+                  nodes: "host:50052"
+                mu:
+                  nodes: "host:50053"
+        """)
+        settings = RustyClusterSettings.from_yaml(path)
+        assert settings.names == ["zeta", "alpha", "mu"]
+
+    def test_direct_construction_for_tests(self):
+        # Bypassing YAML — used by tests and library embedding.
+        settings = RustyClusterSettings(
+            clusters={
+                "t": RustyClusterConfig(nodes="localhost:50051"),
+            },
+        )
+        assert settings.get("t").target == "localhost:50051"
+
+    def test_direct_construction_rejects_empty_clusters(self):
+        with pytest.raises(ValidationError):
+            RustyClusterSettings(clusters={})
+
+
+class TestGetClientResolution:
+    """Cover the name-resolution / error paths of `get_client` that run
+    *before* any network connection is attempted, so they're safe to test
+    without a live server."""
+
+    def test_unknown_name_raises(self):
+        from rustycluster import get_client
+
+        settings = RustyClusterSettings(
+            clusters={"DB0": RustyClusterConfig(nodes="localhost:50051")},
+        )
+        with pytest.raises(ConfigurationError, match="Unknown cluster"):
+            get_client("nope", settings=settings)
+
+    def test_omitted_name_with_multiple_clusters_raises(self):
+        from rustycluster import get_client
+
+        settings = RustyClusterSettings(
+            clusters={
+                "a": RustyClusterConfig(nodes="localhost:50051"),
+                "b": RustyClusterConfig(nodes="localhost:50052"),
+            },
+        )
+        with pytest.raises(ConfigurationError, match="Multiple clusters"):
+            get_client(settings=settings)

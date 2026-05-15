@@ -41,66 +41,87 @@ pip install pyyaml
 
 ### Option 1 — YAML config file (recommended)
 
-Create `rustycluster.yaml` in your project root:
+Create `rustycluster.yaml` in your project root. Declare one or more
+clusters under `clusters:`; shared settings go in `defaults:`.
 
 ```yaml
 rustycluster:
-  host: localhost
-  port: 50051
-  username: admin
-  password: secret
+  defaults:
+    username: admin
+    password: secret
+    timeout_seconds: 10.0
+  clusters:
+    DB0:
+      nodes: "localhost:50051,localhost:50052,localhost:50053"
+    DB1:
+      nodes: "localhost:50054,localhost:50055,localhost:50056"
+      timeout_seconds: 5.0       # per-cluster override
 ```
 
-Then just call `get_client()` with no arguments:
+Then fetch a client by cluster name:
 
 ```python
-from rustycluster import get_client
+from rustycluster import get_client, close_all
 
-client = get_client()          # auto-reads rustycluster.yaml
-client.set("hello", "world")
-print(client.get("hello"))     # "world"
-client.close()
+db0 = get_client("DB0")          # builds + caches DB0 client
+db0.set("hello", "world")
+print(db0.get("hello"))          # "world"
+
+db1 = get_client("DB1")          # different cluster, different client
+db1.hset("user:1", "name", "Alice")
+
+close_all()                      # tear down every cached client
 ```
 
-### Option 2 — Direct config
+`get_client("DB0")` is memoised — repeated calls return the same instance.
+
+### Option 2 — Explicit settings (tests / embedding)
+
+Bypass YAML discovery by constructing `RustyClusterSettings` in code.
+Clients built this way are *not* cached; the caller owns the lifecycle.
 
 ```python
-from rustycluster import get_client, RustyClusterConfig
+from rustycluster import get_client, RustyClusterConfig, RustyClusterSettings
 
-config = RustyClusterConfig(
-    host="localhost",
-    port=50051,
-    username="admin",
-    password="secret",
+settings = RustyClusterSettings(
+    clusters={
+        "DB0": RustyClusterConfig(
+            nodes="localhost:50051,localhost:50052",
+            username="admin", password="secret",
+        ),
+    },
 )
 
-with get_client(config) as client:
+with get_client("DB0", settings=settings) as client:
     client.set("hello", "world")
-    print(client.get("hello"))   # "world"
 ```
 
-### Option 3 — Environment variables
+### Option 3 — Environment variables (single cluster only)
+
+Env vars describe one cluster; multi-cluster setups must use YAML.
 
 ```bash
-export RUSTYCLUSTER_HOST=myserver
-export RUSTYCLUSTER_PORT=50051
+export RUSTYCLUSTER_NODES=myserver:50051,myserver-2:50051
 export RUSTYCLUSTER_USERNAME=admin
 export RUSTYCLUSTER_PASSWORD=secret
 ```
 
 ```python
-from rustycluster import get_client
+from rustycluster import get_client, RustyClusterConfig, RustyClusterSettings
 
-client = get_client()   # reads RUSTYCLUSTER_* env vars if no YAML found
+config = RustyClusterConfig.from_env()
+settings = RustyClusterSettings(clusters={"default": config})
+client = get_client("default", settings=settings)
 ```
 
 ### Option 4 — .env file
 
 ```python
-from rustycluster import get_client, RustyClusterConfig
+from rustycluster import get_client, RustyClusterConfig, RustyClusterSettings
 
 config = RustyClusterConfig.from_dotenv(".env")
-client = get_client(config)
+settings = RustyClusterSettings(clusters={"default": config})
+client = get_client("default", settings=settings)
 ```
 
 ---
@@ -109,66 +130,62 @@ client = get_client(config)
 
 ### File discovery order
 
-When you call `get_client()` with no arguments, the client searches for a config file in this order:
+When you call `get_client(name)` without an explicit `settings=` argument,
+the client searches for a config file in this order:
 
-| Priority | Location | Example |
-|---|---|---|
-| 1 | Project root | `./rustycluster.yaml` |
-| 2 | Config subfolder | `./config/rustycluster.yaml` |
-| 3 | Home directory | `~/.rustycluster.yaml` |
-| 4 | Environment variables | `RUSTYCLUSTER_*` prefix (fallback) |
+| Priority | Location |
+|---|---|
+| 1 | `./rustycluster.yaml` |
+| 2 | `./config/rustycluster.yaml` |
+| 3 | `~/.rustycluster.yaml` |
 
-The first match wins. If none are found, it falls back to environment variables.
+The first match wins. If none are found, `ConfigurationError` is raised.
 
 ### Full YAML reference
 
 ```yaml
 rustycluster:
 
-  # ── Connection ──────────────────────────────────────────────────────────────
-  host: localhost
-  port: 50051
+  # Shared settings — every cluster inherits these.
+  defaults:
+    username: admin
+    password: secret
 
-  # ── Authentication ──────────────────────────────────────────────────────────
-  username: admin
-  password: secret
+    # TLS (optional)
+    use_tls: false
+    # tls_ca_cert_path: /path/to/ca.crt
+    # tls_client_cert_path: /path/to/client.crt   # mTLS
+    # tls_client_key_path: /path/to/client.key    # mTLS
 
-  # ── TLS (optional) ──────────────────────────────────────────────────────────
-  use_tls: false
-  # tls_ca_cert_path: /path/to/ca.crt
-  # tls_client_cert_path: /path/to/client.crt   # mTLS
-  # tls_client_key_path: /path/to/client.key    # mTLS
+    # Timeouts & retries
+    timeout_seconds: 10.0
+    max_retries: 3
+    retry_backoff_base: 0.5
+    retry_backoff_max: 30.0
 
-  # ── Timeouts & Retries ──────────────────────────────────────────────────────
-  timeout_seconds: 10.0
-  max_retries: 3
-  retry_backoff_base: 0.5
-  retry_backoff_max: 30.0
+    # Pool & misc
+    connection_pool_size: 5
+    enable_compression: false
+    log_level: WARNING        # DEBUG, INFO, WARNING, ERROR
 
-  # ── Connection Pool ─────────────────────────────────────────────────────────
-  connection_pool_size: 5
-
-  # ── Misc ────────────────────────────────────────────────────────────────────
-  enable_compression: false
-  log_level: WARNING        # DEBUG, INFO, WARNING, ERROR
-```
-
-### Flat YAML (no nesting) also supported
-
-```yaml
-host: localhost
-port: 50051
-username: admin
-password: secret
+  # Named clusters. `nodes` is required per cluster (first entry is the
+  # primary; later entries are tried in order on failover). Any other
+  # field overrides `defaults` for this cluster.
+  clusters:
+    DB0:
+      nodes: "localhost:50051,localhost:50052,localhost:50053"
+    DB1:
+      nodes: "localhost:50054,localhost:50055,localhost:50056"
+      timeout_seconds: 5.0
 ```
 
 ### Load YAML explicitly
 
 ```python
-from rustycluster import get_client, RustyClusterConfig
+from rustycluster import get_client, RustyClusterSettings
 
-config = RustyClusterConfig.from_yaml("path/to/rustycluster.yaml")
-client = get_client(config)
+settings = RustyClusterSettings.from_yaml("path/to/rustycluster.yaml")
+client = get_client("DB0", settings=settings)
 ```
 
 ---
@@ -177,10 +194,12 @@ client = get_client(config)
 
 All configuration options, their YAML keys, environment variable equivalents, and defaults:
 
+All keys below are valid both at the cluster level and inside `defaults:`
+(per-cluster always wins). `nodes` only makes sense per-cluster.
+
 | YAML Key | Env Var | Default | Description |
 |---|---|---|---|
-| `host` | `RUSTYCLUSTER_HOST` | `localhost` | Server hostname |
-| `port` | `RUSTYCLUSTER_PORT` | `50051` | gRPC port |
+| `nodes` | `RUSTYCLUSTER_NODES` | `localhost:50051` | Comma-separated `host:port` list. First entry is primary; rest are failover order. |
 | `username` | `RUSTYCLUSTER_USERNAME` | `""` | Auth username |
 | `password` | `RUSTYCLUSTER_PASSWORD` | `""` | Auth password |
 | `use_tls` | `RUSTYCLUSTER_USE_TLS` | `false` | Enable TLS |

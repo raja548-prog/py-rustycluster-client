@@ -1,27 +1,38 @@
 """
-Configuration model for RustyCluster client.
+Configuration models for the RustyCluster client.
 
-Supports direct instantiation, environment variables, and .env files.
+Two models live here:
 
-Example:
-    # Direct
-    config = RustyClusterConfig(
-        nodes="localhost:50051,localhost:50052",
-        username="admin", password="secret",
-    )
+* ``RustyClusterConfig``  — per-cluster configuration (nodes, auth, TLS,
+  timeouts, retries, etc.). The same shape the client has always had,
+  but now scoped to a single cluster.
+* ``RustyClusterSettings`` — top-level container that loads a YAML file
+  describing one or more named clusters (DB0, DB1, …) plus a shared
+  ``defaults`` block. Cluster-level fields override the defaults.
 
-    # From environment variables
-    config = RustyClusterConfig.from_env()
+Typical use is via ``rustycluster.get_client(name)``, which loads
+``RustyClusterSettings`` from ``rustycluster.yaml`` automatically.
 
-    # From .env file
-    config = RustyClusterConfig.from_dotenv("/path/to/.env")
+YAML layout::
+
+    rustycluster:
+      defaults:
+        username: admin
+        password: secret
+        timeout_seconds: 10.0
+      clusters:
+        DB0:
+          nodes: "localhost:50051,localhost:50052"
+        DB1:
+          nodes: "localhost:50054,localhost:50055"
+          timeout_seconds: 5.0   # per-cluster override
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic import SecretStr
@@ -29,7 +40,7 @@ from pydantic import SecretStr
 
 class RustyClusterConfig(BaseModel):
     """
-    Configuration for the RustyCluster gRPC client.
+    Per-cluster configuration for the RustyCluster gRPC client.
 
     Attributes:
         nodes: Comma-separated `host:port` list. The first entry is the
@@ -134,7 +145,10 @@ class RustyClusterConfig(BaseModel):
     @classmethod
     def from_env(cls) -> "RustyClusterConfig":
         """
-        Build config from environment variables.
+        Build a single-cluster config from environment variables.
+
+        Multi-cluster setups must use the YAML loader via
+        :class:`RustyClusterSettings` — env vars only describe one cluster.
 
         Environment variables (all prefixed with RUSTYCLUSTER_):
             RUSTYCLUSTER_NODES         (e.g. "localhost:50051,localhost:50052")
@@ -179,26 +193,91 @@ class RustyClusterConfig(BaseModel):
         return cls(**kwargs)
 
     @classmethod
-    def from_yaml(cls, yaml_file: str | Path = "rustycluster.yaml") -> "RustyClusterConfig":
+    def from_dotenv(cls, env_file: str | Path = ".env") -> "RustyClusterConfig":
         """
-        Build config from a YAML file.
+        Build a single-cluster config from a .env file, then fall back to
+        environment variables.
+        """
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(dotenv_path=str(env_file), override=False)
+        except ImportError as e:
+            raise ImportError(
+                "python-dotenv is required for from_dotenv(). "
+                "Install it with: pip install python-dotenv"
+            ) from e
+        return cls.from_env()
 
-        Supports nested layout (recommended)::
+    def __repr__(self) -> str:
+        return (
+            f"RustyClusterConfig(nodes={self.nodes!r}, "
+            f"username={self.username!r}, use_tls={self.use_tls}, "
+            f"timeout_seconds={self.timeout_seconds})"
+        )
 
-            rustycluster:
-              nodes: "localhost:50051,localhost:50052,localhost:50053"
-              username: admin
-              password: secret
 
-        Or flat layout::
+# Fields on RustyClusterConfig that take a filesystem Path. YAML carries
+# them as strings, so we coerce before constructing the model.
+_PATH_FIELDS = ("tls_ca_cert_path", "tls_client_cert_path", "tls_client_key_path")
 
-            nodes: "localhost:50051,localhost:50052"
 
-        Args:
-            yaml_file: Path to the YAML config file. Defaults to 'rustycluster.yaml'.
+class RustyClusterSettings(BaseModel):
+    """
+    Top-level multi-cluster settings.
+
+    Loaded from a YAML file with a ``defaults`` block and a ``clusters``
+    map. Each cluster inherits ``defaults`` and may override any field.
+
+    Attributes:
+        defaults: The raw defaults mapping as it appeared in YAML (kept
+            for introspection and re-export; merging has already happened
+            into each cluster's ``RustyClusterConfig``).
+        clusters: Resolved per-cluster configs, keyed by cluster name.
+    """
+
+    defaults: dict[str, Any] = Field(default_factory=dict)
+    clusters: dict[str, RustyClusterConfig]
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    @field_validator("clusters")
+    @classmethod
+    def validate_clusters_non_empty(cls, v: dict[str, RustyClusterConfig]) -> dict[str, RustyClusterConfig]:
+        if not v:
+            raise ValueError("at least one cluster must be configured")
+        for name in v:
+            if not name or not name.strip():
+                raise ValueError("cluster names must be non-empty strings")
+        return v
+
+    def get(self, name: str) -> RustyClusterConfig:
+        """Return the config for ``name`` or raise ``ConfigurationError``."""
+        from rustycluster.exceptions import ConfigurationError
+
+        if name not in self.clusters:
+            raise ConfigurationError(
+                f"Unknown cluster '{name}'. Configured: {sorted(self.clusters)}"
+            )
+        return self.clusters[name]
+
+    @property
+    def names(self) -> list[str]:
+        """Return the configured cluster names in declaration order."""
+        return list(self.clusters)
+
+    @classmethod
+    def from_yaml(cls, yaml_file: str | Path = "rustycluster.yaml") -> "RustyClusterSettings":
+        """
+        Load multi-cluster settings from a YAML file.
+
+        The file must contain a top-level ``rustycluster:`` block with a
+        required ``clusters:`` map and an optional ``defaults:`` block.
+        For each cluster, fields under ``defaults`` are merged in first
+        and then overridden by anything in the cluster's own block.
 
         Raises:
-            ConfigurationError: If the file is missing or malformed.
+            ConfigurationError: If the file is missing, malformed, or any
+                cluster fails per-field validation.
         """
         from rustycluster.exceptions import ConfigurationError
 
@@ -225,40 +304,58 @@ class RustyClusterConfig(BaseModel):
                 f"YAML config file '{path}' must contain a mapping at the top level."
             )
 
-        # Support both nested (rustycluster: ...) and flat layout
-        data = dict(raw.get("rustycluster", raw))
+        block = raw.get("rustycluster", raw)
+        if not isinstance(block, dict):
+            raise ConfigurationError(
+                f"'rustycluster' in '{path}' must be a mapping, got {type(block).__name__}."
+            )
 
-        # Convert path strings to Path objects
-        for key in ("tls_ca_cert_path", "tls_client_cert_path", "tls_client_key_path"):
-            if data.get(key):
-                data[key] = Path(data[key])
+        defaults_raw = block.get("defaults") or {}
+        if not isinstance(defaults_raw, dict):
+            raise ConfigurationError(
+                f"'rustycluster.defaults' in '{path}' must be a mapping, "
+                f"got {type(defaults_raw).__name__}."
+            )
 
-        try:
-            return cls(**data)
-        except Exception as exc:
-            raise ConfigurationError(f"Invalid configuration in '{path}': {exc}") from exc
+        clusters_raw = block.get("clusters")
+        if clusters_raw is None:
+            raise ConfigurationError(
+                f"'rustycluster.clusters' is required in '{path}'."
+            )
+        if not isinstance(clusters_raw, dict):
+            raise ConfigurationError(
+                f"'rustycluster.clusters' in '{path}' must be a mapping of "
+                f"name -> cluster-config, got {type(clusters_raw).__name__}."
+            )
+        if not clusters_raw:
+            raise ConfigurationError(
+                f"'rustycluster.clusters' in '{path}' must contain at least one cluster."
+            )
 
-    @classmethod
-    def from_dotenv(cls, env_file: str | Path = ".env") -> "RustyClusterConfig":
-        """
-        Build config from a .env file, then fall back to environment variables.
+        resolved: dict[str, RustyClusterConfig] = {}
+        for name, cluster_block in clusters_raw.items():
+            if cluster_block is None:
+                cluster_block = {}
+            if not isinstance(cluster_block, dict):
+                raise ConfigurationError(
+                    f"Cluster '{name}' in '{path}' must be a mapping, "
+                    f"got {type(cluster_block).__name__}."
+                )
 
-        Args:
-            env_file: Path to the .env file. Defaults to '.env' in the current directory.
-        """
-        try:
-            from dotenv import load_dotenv
-            load_dotenv(dotenv_path=str(env_file), override=False)
-        except ImportError as e:
-            raise ImportError(
-                "python-dotenv is required for from_dotenv(). "
-                "Install it with: pip install python-dotenv"
-            ) from e
-        return cls.from_env()
+            merged: dict[str, Any] = {**defaults_raw, **cluster_block}
+
+            for key in _PATH_FIELDS:
+                if merged.get(key):
+                    merged[key] = Path(merged[key])
+
+            try:
+                resolved[str(name)] = RustyClusterConfig(**merged)
+            except Exception as exc:
+                raise ConfigurationError(
+                    f"Invalid configuration for cluster '{name}' in '{path}': {exc}"
+                ) from exc
+
+        return cls(defaults=dict(defaults_raw), clusters=resolved)
 
     def __repr__(self) -> str:
-        return (
-            f"RustyClusterConfig(nodes={self.nodes!r}, "
-            f"username={self.username!r}, use_tls={self.use_tls}, "
-            f"timeout_seconds={self.timeout_seconds})"
-        )
+        return f"RustyClusterSettings(clusters={list(self.clusters)!r})"
