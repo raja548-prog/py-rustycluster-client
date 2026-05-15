@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-rustycluster-client"
-version = "1.1.0"
+version = "1.1.1"
 description = "Enterprise-grade Python gRPC client for the RustyCluster distributed key-value store"
 readme = "README.md"
 license = { text = "MIT" }
