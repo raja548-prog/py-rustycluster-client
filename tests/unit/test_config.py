@@ -15,16 +15,33 @@ from rustycluster.config import RustyClusterConfig
 class TestRustyClusterConfig:
     def test_defaults(self):
         config = RustyClusterConfig()
-        assert config.host == "localhost"
-        assert config.port == 50051
+        assert config.nodes == "localhost:50051"
+        assert config.node_targets == [("localhost", 50051)]
+        assert config.target == "localhost:50051"
         assert config.use_tls is False
         assert config.timeout_seconds == 10.0
         assert config.max_retries == 3
         assert config.log_level == "WARNING"
 
     def test_target(self):
-        config = RustyClusterConfig(host="myserver", port=9090)
+        config = RustyClusterConfig(nodes="myserver:9090")
         assert config.target == "myserver:9090"
+
+    def test_multiple_nodes_parsed_in_order(self):
+        config = RustyClusterConfig(
+            nodes="primary:50051,secondary:50052,tertiary:50053"
+        )
+        assert config.node_targets == [
+            ("primary", 50051),
+            ("secondary", 50052),
+            ("tertiary", 50053),
+        ]
+        assert config.targets == ["primary:50051", "secondary:50052", "tertiary:50053"]
+        assert config.target == "primary:50051"
+
+    def test_nodes_with_whitespace_is_trimmed(self):
+        config = RustyClusterConfig(nodes=" host1:1 , host2:2 ")
+        assert config.targets == ["host1:1", "host2:2"]
 
     def test_password_is_secret(self):
         config = RustyClusterConfig(password="supersecret")
@@ -35,11 +52,23 @@ class TestRustyClusterConfig:
 
     def test_invalid_port_too_high(self):
         with pytest.raises(ValidationError):
-            RustyClusterConfig(port=99999)
+            RustyClusterConfig(nodes="localhost:99999")
 
     def test_invalid_port_zero(self):
         with pytest.raises(ValidationError):
-            RustyClusterConfig(port=0)
+            RustyClusterConfig(nodes="localhost:0")
+
+    def test_invalid_node_missing_port(self):
+        with pytest.raises(ValidationError):
+            RustyClusterConfig(nodes="localhost")
+
+    def test_invalid_node_empty(self):
+        with pytest.raises(ValidationError):
+            RustyClusterConfig(nodes="")
+
+    def test_invalid_node_non_integer_port(self):
+        with pytest.raises(ValidationError):
+            RustyClusterConfig(nodes="localhost:abc")
 
     def test_invalid_log_level(self):
         with pytest.raises(ValidationError):
@@ -51,8 +80,7 @@ class TestRustyClusterConfig:
 
     def test_from_env(self):
         env = {
-            "RUSTYCLUSTER_HOST": "prod-server",
-            "RUSTYCLUSTER_PORT": "50052",
+            "RUSTYCLUSTER_NODES": "prod-a:50052,prod-b:50053",
             "RUSTYCLUSTER_USERNAME": "user1",
             "RUSTYCLUSTER_PASSWORD": "pass1",
             "RUSTYCLUSTER_USE_TLS": "true",
@@ -63,8 +91,8 @@ class TestRustyClusterConfig:
         with patch.dict(os.environ, env, clear=False):
             config = RustyClusterConfig.from_env()
 
-        assert config.host == "prod-server"
-        assert config.port == 50052
+        assert config.nodes == "prod-a:50052,prod-b:50053"
+        assert config.target == "prod-a:50052"
         assert config.username == "user1"
         assert config.password.get_secret_value() == "pass1"
         assert config.use_tls is True
@@ -74,12 +102,11 @@ class TestRustyClusterConfig:
 
     def test_from_env_defaults_when_not_set(self):
         # Ensure no RUSTYCLUSTER_ vars are set
-        keys_to_remove = [k for k in os.environ if k.startswith("RUSTYCLUSTER_")]
         clean_env = {k: v for k, v in os.environ.items() if not k.startswith("RUSTYCLUSTER_")}
         with patch.dict(os.environ, clean_env, clear=True):
             config = RustyClusterConfig.from_env()
-        assert config.host == "localhost"
-        assert config.port == 50051
+        assert config.nodes == "localhost:50051"
+        assert config.target == "localhost:50051"
 
     def test_tls_path_validation_nonexistent(self, tmp_path):
         with pytest.raises(ValidationError, match="tls_ca_cert_path does not exist"):

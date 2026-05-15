@@ -5,7 +5,10 @@ Supports direct instantiation, environment variables, and .env files.
 
 Example:
     # Direct
-    config = RustyClusterConfig(host="localhost", port=50051, username="admin", password="secret")
+    config = RustyClusterConfig(
+        nodes="localhost:50051,localhost:50052",
+        username="admin", password="secret",
+    )
 
     # From environment variables
     config = RustyClusterConfig.from_env()
@@ -29,8 +32,8 @@ class RustyClusterConfig(BaseModel):
     Configuration for the RustyCluster gRPC client.
 
     Attributes:
-        host: Server hostname or IP address.
-        port: Server gRPC port.
+        nodes: Comma-separated `host:port` list. The first entry is the
+            primary; subsequent entries are tried in order on failover.
         username: Authentication username.
         password: Authentication password (stored as SecretStr).
         use_tls: Whether to use TLS for the gRPC channel.
@@ -46,8 +49,10 @@ class RustyClusterConfig(BaseModel):
         log_level: Logging level for the rustycluster logger.
     """
 
-    host: str = Field(default="localhost", description="RustyCluster server host")
-    port: int = Field(default=50051, ge=1, le=65535, description="gRPC port")
+    nodes: str = Field(
+        default="localhost:50051",
+        description="Comma-separated host:port list. First entry is the primary.",
+    )
     username: str = Field(default="", description="Authentication username")
     password: SecretStr = Field(default=SecretStr(""), description="Authentication password")
     use_tls: bool = Field(default=False, description="Enable TLS for the channel")
@@ -73,6 +78,26 @@ class RustyClusterConfig(BaseModel):
             raise ValueError(f"log_level must be one of {valid}, got '{v}'")
         return upper
 
+    @field_validator("nodes")
+    @classmethod
+    def validate_nodes(cls, v: str) -> str:
+        entries = [e.strip() for e in v.split(",") if e.strip()]
+        if not entries:
+            raise ValueError("nodes must contain at least one 'host:port' entry")
+        for entry in entries:
+            if entry.count(":") != 1:
+                raise ValueError(f"node entry '{entry}' must be of the form 'host:port'")
+            host, port_str = entry.split(":", 1)
+            if not host:
+                raise ValueError(f"node entry '{entry}' has an empty host")
+            try:
+                port = int(port_str)
+            except ValueError:
+                raise ValueError(f"node entry '{entry}' has a non-integer port") from None
+            if not (1 <= port <= 65535):
+                raise ValueError(f"node entry '{entry}' has a port out of range 1..65535")
+        return ",".join(entries)
+
     @model_validator(mode="after")
     def validate_tls_paths(self) -> "RustyClusterConfig":
         if self.use_tls:
@@ -85,9 +110,26 @@ class RustyClusterConfig(BaseModel):
         return self
 
     @property
+    def node_targets(self) -> list[tuple[str, int]]:
+        """Return parsed (host, port) tuples in priority order."""
+        result: list[tuple[str, int]] = []
+        for entry in self.nodes.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            host, port_str = entry.split(":", 1)
+            result.append((host, int(port_str)))
+        return result
+
+    @property
+    def targets(self) -> list[str]:
+        """Return 'host:port' strings in priority order."""
+        return [f"{h}:{p}" for h, p in self.node_targets]
+
+    @property
     def target(self) -> str:
-        """Return the gRPC target string (host:port)."""
-        return f"{self.host}:{self.port}"
+        """Return the primary gRPC target string (first node)."""
+        return self.targets[0]
 
     @classmethod
     def from_env(cls) -> "RustyClusterConfig":
@@ -95,8 +137,7 @@ class RustyClusterConfig(BaseModel):
         Build config from environment variables.
 
         Environment variables (all prefixed with RUSTYCLUSTER_):
-            RUSTYCLUSTER_HOST
-            RUSTYCLUSTER_PORT
+            RUSTYCLUSTER_NODES         (e.g. "localhost:50051,localhost:50052")
             RUSTYCLUSTER_USERNAME
             RUSTYCLUSTER_PASSWORD
             RUSTYCLUSTER_USE_TLS
@@ -115,8 +156,7 @@ class RustyClusterConfig(BaseModel):
             return os.environ.get(f"RUSTYCLUSTER_{key}", default)
 
         kwargs: dict = {
-            "host": _get("HOST", "localhost"),
-            "port": int(_get("PORT", "50051")),
+            "nodes": _get("NODES", "localhost:50051"),
             "username": _get("USERNAME", ""),
             "password": _get("PASSWORD", ""),
             "use_tls": _get("USE_TLS", "false").lower() in ("1", "true", "yes"),
@@ -146,15 +186,13 @@ class RustyClusterConfig(BaseModel):
         Supports nested layout (recommended)::
 
             rustycluster:
-              host: localhost
-              port: 50051
+              nodes: "localhost:50051,localhost:50052,localhost:50053"
               username: admin
               password: secret
 
         Or flat layout::
 
-            host: localhost
-            port: 50051
+            nodes: "localhost:50051,localhost:50052"
 
         Args:
             yaml_file: Path to the YAML config file. Defaults to 'rustycluster.yaml'.
@@ -220,7 +258,7 @@ class RustyClusterConfig(BaseModel):
 
     def __repr__(self) -> str:
         return (
-            f"RustyClusterConfig(host={self.host!r}, port={self.port}, "
+            f"RustyClusterConfig(nodes={self.nodes!r}, "
             f"username={self.username!r}, use_tls={self.use_tls}, "
             f"timeout_seconds={self.timeout_seconds})"
         )

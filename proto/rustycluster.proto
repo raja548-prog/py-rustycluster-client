@@ -59,6 +59,26 @@ service KeyValueService {
   rpc LoadScript (LoadScriptRequest) returns (LoadScriptResponse);
   rpc EvalSha (EvalShaRequest) returns (EvalShaResponse);
 
+  // List (queue) operations
+  rpc LPush (LPushRequest) returns (LPushResponse);
+  rpc RPush (RPushRequest) returns (RPushResponse);
+  rpc LPop (LPopRequest) returns (LPopResponse);
+  rpc RPop (RPopRequest) returns (RPopResponse);
+  rpc LRange (LRangeRequest) returns (LRangeResponse);
+  rpc LLen (LLenRequest) returns (LLenResponse);
+  rpc LTrim (LTrimRequest) returns (LTrimResponse);
+  rpc LIndex (LIndexRequest) returns (LIndexResponse);
+  rpc LSet (LSetRequest) returns (LSetResponse);
+  rpc LRem (LRemRequest) returns (LRemResponse);
+  rpc LInsert (LInsertRequest) returns (LInsertResponse);
+  rpc LPushX (LPushXRequest) returns (LPushXResponse);
+  rpc RPushX (RPushXRequest) returns (RPushXResponse);
+  rpc LPos (LPosRequest) returns (LPosResponse);
+
+  // Stream operations
+  rpc XAdd (XAddRequest) returns (XAddResponse);
+  rpc XRead (XReadRequest) returns (XReadResponse);
+
   // Batch operations
   rpc BatchWrite (BatchWriteRequest) returns (BatchWriteResponse);
 }
@@ -522,6 +542,17 @@ message BatchOperation {
     HEXPIRE = 19;
     HSET_BYTES = 20;
     SREM = 21;
+    LPUSH = 22;
+    RPUSH = 23;
+    LPOP = 24;
+    LTRIM = 25;
+    XADD = 26;
+    RPOP = 27;
+    LSET = 28;
+    LREM = 29;
+    LINSERT = 30;
+    LPUSHX = 31;
+    RPUSHX = 32;
   }
 
   OperationType operation_type = 1;
@@ -563,4 +594,218 @@ message PingResponse {
   bool success = 1;
   string message = 2;
   int64 latency_ms = 3;  // Latency in milliseconds
+}
+
+// ---------------------------------------------------------------------------
+// List (queue) operations
+// ---------------------------------------------------------------------------
+
+// LPUSH: prepend one or more values to a list
+message LPushRequest {
+  string key = 1;
+  repeated string values = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message LPushResponse {
+  int64 length = 1;  // Length of the list after the push
+}
+
+// RPUSH: append one or more values to a list
+message RPushRequest {
+  string key = 1;
+  repeated string values = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message RPushResponse {
+  int64 length = 1;  // Length of the list after the push
+}
+
+// LPOP: remove and return one or more values from the head of a list
+message LPopRequest {
+  string key = 1;
+  optional uint32 count = 2;  // If unset, pop a single element
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message LPopResponse {
+  repeated string values = 1;  // Empty if the list is empty / key missing
+}
+
+// LRANGE: read a slice of a list (no replication)
+message LRangeRequest {
+  string key = 1;
+  int64 start = 2;
+  int64 stop = 3;
+}
+
+message LRangeResponse {
+  repeated string values = 1;
+}
+
+// LLEN: list length (no replication)
+message LLenRequest {
+  string key = 1;
+}
+
+message LLenResponse {
+  int64 length = 1;
+}
+
+// LTRIM: trim a list to the given range
+message LTrimRequest {
+  string key = 1;
+  int64 start = 2;
+  int64 stop = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message LTrimResponse {
+  bool success = 1;
+}
+
+// RPOP: remove and return one or more values from the tail of a list
+message RPopRequest {
+  string key = 1;
+  optional uint32 count = 2;  // If unset, pop a single element
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message RPopResponse {
+  repeated string values = 1;  // Empty if the list is empty / key missing
+}
+
+// LINDEX: read the element at the given index (no replication)
+message LIndexRequest {
+  string key = 1;
+  int64 index = 2;
+}
+
+message LIndexResponse {
+  bool found = 1;
+  string value = 2;  // Empty if not found
+}
+
+// LSET: set the element at the given index. Errors if index is out of range.
+message LSetRequest {
+  string key = 1;
+  int64 index = 2;
+  string value = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message LSetResponse {
+  bool success = 1;
+}
+
+// LREM: remove up to |count| elements equal to `element`.
+//   count > 0  -> remove from head
+//   count < 0  -> remove from tail
+//   count == 0 -> remove all matches
+message LRemRequest {
+  string key = 1;
+  int64 count = 2;
+  string element = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message LRemResponse {
+  int64 removed = 1;  // Number of elements removed
+}
+
+// LINSERT: insert `element` before or after the first occurrence of `pivot`.
+message LInsertRequest {
+  string key = 1;
+  bool before = 2;        // true => BEFORE, false => AFTER
+  string pivot = 3;
+  string element = 4;
+  bool skip_replication = 5;
+  bool skip_site_replication = 6;
+}
+
+message LInsertResponse {
+  int64 length = 1;  // New list length, -1 if pivot not found, 0 if key absent
+}
+
+// LPUSHX: prepend values only if the list exists.
+message LPushXRequest {
+  string key = 1;
+  repeated string values = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message LPushXResponse {
+  int64 length = 1;  // 0 if the list did not exist
+}
+
+// RPUSHX: append values only if the list exists.
+message RPushXRequest {
+  string key = 1;
+  repeated string values = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message RPushXResponse {
+  int64 length = 1;  // 0 if the list did not exist
+}
+
+// LPOS: find positions of `element` in the list (no replication).
+message LPosRequest {
+  string key = 1;
+  string element = 2;
+  optional int64 rank = 3;     // 1-based; negative searches from tail
+  optional uint32 count = 4;   // If unset, returns at most one position
+}
+
+message LPosResponse {
+  repeated int64 positions = 1;  // Empty if no match
+}
+
+// ---------------------------------------------------------------------------
+// Stream operations
+// ---------------------------------------------------------------------------
+
+// XADD: append an entry to a stream. If id == "*", the server resolves an ID
+// and the resolved ID is what gets replicated to all replicas / peers / sites.
+message XAddRequest {
+  string key = 1;
+  string id = 2;                       // "*" for auto-generated
+  map<string, string> fields = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message XAddResponse {
+  string id = 1;  // The resolved stream entry ID
+}
+
+// XREAD: read entries from one or more streams (non-blocking only in v1)
+message XReadStreamKey {
+  string key = 1;
+  string id = 2;  // Last seen ID; use "0" to read from the start, "$" for newest only
+}
+
+message XReadEntry {
+  string key = 1;
+  string id = 2;
+  map<string, string> fields = 3;
+}
+
+message XReadRequest {
+  optional uint32 count = 1;
+  repeated XReadStreamKey streams = 2;
+}
+
+message XReadResponse {
+  repeated XReadEntry entries = 1;
 }

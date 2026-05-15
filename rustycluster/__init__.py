@@ -8,8 +8,7 @@ Quickstart:
     from rustycluster import get_client, RustyClusterConfig
 
     config = RustyClusterConfig(
-        host="localhost",
-        port=50051,
+        nodes="localhost:50051,localhost:50052",
         username="admin",
         password="secret",
     )
@@ -61,6 +60,7 @@ from rustycluster.exceptions import (
     ScriptError,
     TimeoutError,
 )
+from rustycluster.failover import NodeManager
 from rustycluster.interceptors import build_interceptors
 from rustycluster.proto import rustycluster_pb2, rustycluster_pb2_grpc
 
@@ -90,8 +90,8 @@ __all__ = [
 ]
 
 
-def _build_channel(config: RustyClusterConfig) -> grpc.Channel:
-    """Build a gRPC channel (plain or TLS) from config."""
+def _build_channel(target: str, config: RustyClusterConfig) -> grpc.Channel:
+    """Build a gRPC channel (plain or TLS) for the given target."""
     options = [
         ("grpc.max_send_message_length", 100 * 1024 * 1024),
         ("grpc.max_receive_message_length", 100 * 1024 * 1024),
@@ -117,9 +117,9 @@ def _build_channel(config: RustyClusterConfig) -> grpc.Channel:
             private_key=client_key,
             certificate_chain=client_cert,
         )
-        return grpc.secure_channel(config.target, credentials, options=options)
+        return grpc.secure_channel(target, credentials, options=options)
 
-    return grpc.insecure_channel(config.target, options=options)
+    return grpc.insecure_channel(target, options=options)
 
 
 
@@ -180,8 +180,10 @@ def get_client(config: Optional[RustyClusterConfig] = None) -> RustyClusterClien
 
     Example:
         # Direct config
-        client = get_client(RustyClusterConfig(host="localhost", port=50051,
-                                                username="admin", password="secret"))
+        client = get_client(RustyClusterConfig(
+            nodes="localhost:50051,localhost:50052",
+            username="admin", password="secret",
+        ))
 
         # From env vars
         client = get_client()
@@ -200,38 +202,18 @@ def get_client(config: Optional[RustyClusterConfig] = None) -> RustyClusterClien
 
     logger = logging.getLogger("rustycluster")
 
-    # Step 1: Build raw channel (no auth interceptor yet — needed for initial auth call)
-    raw_channel = _build_channel(config)
-    raw_stub = rustycluster_pb2_grpc.KeyValueServiceStub(raw_channel)
-
-    # Step 2: Authenticate
-    auth_manager = AuthManager(
-        stub=raw_stub,
-        username=config.username,
-        password=config.password.get_secret_value(),
-    )
-    auth_manager.authenticate(timeout=config.timeout_seconds)
-
-    # Step 3: Build intercepted channel that auto-injects the token
-    interceptors = build_interceptors(token_provider=auth_manager.get_token)
-    intercepted_channel = grpc.intercept_channel(raw_channel, *interceptors)
-    stub = rustycluster_pb2_grpc.KeyValueServiceStub(intercepted_channel)
-
-    # Update auth manager to use the intercepted stub for re-auth
-    auth_manager._stub = stub
+    # NodeManager binds to the primary and rotates through the configured
+    # nodes on failover. It also performs the initial authentication.
+    manager = NodeManager(config=config, build_channel=_build_channel)
 
     logger.info(
-        "RustyCluster client connected to %s (TLS=%s)",
-        config.target,
+        "RustyCluster client connected to %s (TLS=%s, failover_nodes=%d)",
+        manager.current_target,
         config.use_tls,
+        len(config.targets),
     )
 
-    return RustyClusterClient(
-        stub=stub,
-        auth_manager=auth_manager,
-        config=config,
-        channel=intercepted_channel,
-    )
+    return RustyClusterClient(manager=manager, config=config)
 
 
 async def async_get_client(
@@ -253,14 +235,17 @@ async def async_get_client(
         from rustycluster import async_get_client, RustyClusterConfig
 
         async def main():
-            config = RustyClusterConfig(host="localhost", port=50051,
-                                         username="admin", password="secret")
+            config = RustyClusterConfig(
+                nodes="localhost:50051,localhost:50052",
+                username="admin", password="secret",
+            )
             async with await async_get_client(config) as client:
                 await client.set("hello", "world")
 
         asyncio.run(main())
     """
     import grpc.aio
+    from rustycluster.failover import AsyncNodeManager
 
     if config is None:
         config = _auto_discover_config()
@@ -268,6 +253,23 @@ async def async_get_client(
     logging.getLogger("rustycluster").setLevel(
         getattr(logging, config.log_level, logging.WARNING)
     )
+
+    manager = AsyncNodeManager(config=config, build_channel=_build_async_channel)
+    await manager.connect()
+
+    logging.getLogger("rustycluster").info(
+        "Async RustyCluster client connected to %s (TLS=%s, failover_nodes=%d)",
+        manager.current_target,
+        config.use_tls,
+        len(config.targets),
+    )
+
+    return AsyncRustyClusterClient(manager=manager, config=config)
+
+
+def _build_async_channel(target: str, config: RustyClusterConfig) -> "grpc.aio.Channel":
+    """Build an async gRPC channel (plain or TLS) for the given target."""
+    import grpc.aio
 
     options = [
         ("grpc.max_send_message_length", 100 * 1024 * 1024),
@@ -279,35 +281,6 @@ async def async_get_client(
         client_cert = config.tls_client_cert_path.read_bytes() if config.tls_client_cert_path else None
         client_key = config.tls_client_key_path.read_bytes() if config.tls_client_key_path else None
         credentials = grpc.ssl_channel_credentials(root_certs, client_key, client_cert)
-        channel = grpc.aio.secure_channel(config.target, credentials, options=options)
-    else:
-        channel = grpc.aio.insecure_channel(config.target, options=options)
+        return grpc.aio.secure_channel(target, credentials, options=options)
 
-    stub = rustycluster_pb2_grpc.KeyValueServiceStub(channel)
-
-    # Authenticate
-    try:
-        resp = await stub.Authenticate(
-            rustycluster_pb2.AuthenticateRequest(
-                username=config.username,
-                creds=config.password.get_secret_value(),
-            ),
-            timeout=config.timeout_seconds,
-        )
-    except grpc.RpcError as exc:
-        await channel.close()
-        raise AuthenticationError(
-            f"Async authentication failed: {exc.details() if hasattr(exc, 'details') else exc}",
-            cause=exc,
-        ) from exc
-
-    if not resp.success:
-        await channel.close()
-        raise AuthenticationError(f"Authentication rejected: {resp.message}")
-
-    return AsyncRustyClusterClient(
-        stub=stub,
-        config=config,
-        channel=channel,
-        session_token=resp.session_token,
-    )
+    return grpc.aio.insecure_channel(target, options=options)

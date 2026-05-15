@@ -12,17 +12,21 @@ from rustycluster.proto import rustycluster_pb2
 
 
 def _make_client() -> tuple[RustyClusterClient, MagicMock]:
-    """Return a client wired to a fully mocked stub."""
+    """Return a client wired to a fully mocked stub via a fake NodeManager."""
     config = RustyClusterConfig(
-        host="localhost", port=50051,
+        nodes="localhost:50051",
         username="admin", password="secret",
         max_retries=0,  # no retries in unit tests
     )
     stub = MagicMock()
-    auth = MagicMock()
-    auth.get_token.return_value = "test-token"
-    channel = MagicMock()
-    client = RustyClusterClient(stub=stub, auth_manager=auth, config=config, channel=channel)
+    manager = MagicMock()
+    manager.stub = stub
+    manager.auth_manager = MagicMock()
+    manager.auth_manager.get_token.return_value = "test-token"
+    manager.failover.side_effect = RuntimeError(
+        "failover should not trigger in unit tests"
+    )
+    client = RustyClusterClient(manager=manager, config=config)
     return client, stub
 
 
@@ -205,6 +209,182 @@ class TestSystemOperations:
         assert client.health_check() is True
 
 
+class TestListOperations:
+    def test_lpush_returns_length_and_passes_values(self):
+        client, stub = _make_client()
+        stub.LPush.return_value = rustycluster_pb2.LPushResponse(length=3)
+        assert client.lpush("q", "a", "b", "c") == 3
+        req = stub.LPush.call_args.args[0]
+        assert req.key == "q"
+        assert list(req.values) == ["a", "b", "c"]
+
+    def test_rpush_returns_length(self):
+        client, stub = _make_client()
+        stub.RPush.return_value = rustycluster_pb2.RPushResponse(length=2)
+        assert client.rpush("q", "x", "y") == 2
+
+    def test_lpushx_returns_zero_when_absent(self):
+        client, stub = _make_client()
+        stub.LPushX.return_value = rustycluster_pb2.LPushXResponse(length=0)
+        assert client.lpushx("q", "v") == 0
+
+    def test_rpushx_returns_length(self):
+        client, stub = _make_client()
+        stub.RPushX.return_value = rustycluster_pb2.RPushXResponse(length=4)
+        assert client.rpushx("q", "v") == 4
+
+    def test_lpop_no_count_does_not_set_count(self):
+        client, stub = _make_client()
+        stub.LPop.return_value = rustycluster_pb2.LPopResponse(values=["a"])
+        assert client.lpop("q") == ["a"]
+        req = stub.LPop.call_args.args[0]
+        assert req.HasField("count") is False
+
+    def test_lpop_with_count_sets_count(self):
+        client, stub = _make_client()
+        stub.LPop.return_value = rustycluster_pb2.LPopResponse(values=["a", "b"])
+        assert client.lpop("q", count=2) == ["a", "b"]
+        req = stub.LPop.call_args.args[0]
+        assert req.count == 2
+
+    def test_lpop_empty_returns_empty_list(self):
+        client, stub = _make_client()
+        stub.LPop.return_value = rustycluster_pb2.LPopResponse(values=[])
+        assert client.lpop("q") == []
+
+    def test_rpop_with_count(self):
+        client, stub = _make_client()
+        stub.RPop.return_value = rustycluster_pb2.RPopResponse(values=["z", "y"])
+        assert client.rpop("q", count=2) == ["z", "y"]
+
+    def test_lrange_returns_list(self):
+        client, stub = _make_client()
+        stub.LRange.return_value = rustycluster_pb2.LRangeResponse(values=["a", "b", "c"])
+        assert client.lrange("q", 0, -1) == ["a", "b", "c"]
+
+    def test_llen_zero_when_missing(self):
+        client, stub = _make_client()
+        stub.LLen.return_value = rustycluster_pb2.LLenResponse(length=0)
+        assert client.llen("missing") == 0
+
+    def test_ltrim_returns_true(self):
+        client, stub = _make_client()
+        stub.LTrim.return_value = rustycluster_pb2.LTrimResponse(success=True)
+        assert client.ltrim("q", 0, 9) is True
+
+    def test_lindex_found(self):
+        client, stub = _make_client()
+        stub.LIndex.return_value = rustycluster_pb2.LIndexResponse(found=True, value="x")
+        assert client.lindex("q", 0) == "x"
+
+    def test_lindex_missing_returns_none(self):
+        client, stub = _make_client()
+        stub.LIndex.return_value = rustycluster_pb2.LIndexResponse(found=False, value="")
+        assert client.lindex("q", 99) is None
+
+    def test_lset_returns_true(self):
+        client, stub = _make_client()
+        stub.LSet.return_value = rustycluster_pb2.LSetResponse(success=True)
+        assert client.lset("q", 0, "v") is True
+
+    def test_lrem_positive_count(self):
+        client, stub = _make_client()
+        stub.LRem.return_value = rustycluster_pb2.LRemResponse(removed=2)
+        assert client.lrem("q", 2, "a") == 2
+        req = stub.LRem.call_args.args[0]
+        assert req.count == 2
+
+    def test_lrem_negative_count(self):
+        client, stub = _make_client()
+        stub.LRem.return_value = rustycluster_pb2.LRemResponse(removed=1)
+        assert client.lrem("q", -1, "a") == 1
+        assert stub.LRem.call_args.args[0].count == -1
+
+    def test_lrem_zero_removes_all(self):
+        client, stub = _make_client()
+        stub.LRem.return_value = rustycluster_pb2.LRemResponse(removed=5)
+        assert client.lrem("q", 0, "a") == 5
+        assert stub.LRem.call_args.args[0].count == 0
+
+    def test_linsert_default_before_is_true(self):
+        client, stub = _make_client()
+        stub.LInsert.return_value = rustycluster_pb2.LInsertResponse(length=4)
+        assert client.linsert("q", "pivot", "el") == 4
+        assert stub.LInsert.call_args.args[0].before is True
+
+    def test_linsert_after_passes_false(self):
+        client, stub = _make_client()
+        stub.LInsert.return_value = rustycluster_pb2.LInsertResponse(length=4)
+        client.linsert("q", "pivot", "el", before=False)
+        assert stub.LInsert.call_args.args[0].before is False
+
+    def test_lpos_no_optionals_returns_positions(self):
+        client, stub = _make_client()
+        stub.LPos.return_value = rustycluster_pb2.LPosResponse(positions=[2])
+        assert client.lpos("q", "a") == [2]
+        req = stub.LPos.call_args.args[0]
+        assert req.HasField("rank") is False
+        assert req.HasField("count") is False
+
+    def test_lpos_with_rank_and_count(self):
+        client, stub = _make_client()
+        stub.LPos.return_value = rustycluster_pb2.LPosResponse(positions=[2, 4])
+        assert client.lpos("q", "a", rank=1, count=2) == [2, 4]
+        req = stub.LPos.call_args.args[0]
+        assert req.rank == 1
+        assert req.count == 2
+
+    def test_lpos_no_match_returns_empty(self):
+        client, stub = _make_client()
+        stub.LPos.return_value = rustycluster_pb2.LPosResponse(positions=[])
+        assert client.lpos("q", "z") == []
+
+
+class TestStreamOperations:
+    def test_xadd_default_id_is_star_and_returns_resolved(self):
+        client, stub = _make_client()
+        stub.XAdd.return_value = rustycluster_pb2.XAddResponse(id="1700000000000-1")
+        assert client.xadd("s", {"f": "v"}) == "1700000000000-1"
+        req = stub.XAdd.call_args.args[0]
+        assert req.id == "*"
+        assert dict(req.fields) == {"f": "v"}
+
+    def test_xadd_custom_id_passes_through(self):
+        client, stub = _make_client()
+        stub.XAdd.return_value = rustycluster_pb2.XAddResponse(id="42-0")
+        client.xadd("s", {"f": "v"}, id="42-0")
+        assert stub.XAdd.call_args.args[0].id == "42-0"
+
+    def test_xread_returns_list_of_tuples(self):
+        client, stub = _make_client()
+        resp = rustycluster_pb2.XReadResponse()
+        e1 = resp.entries.add(key="s", id="1-0")
+        e1.fields["f"] = "v"
+        e2 = resp.entries.add(key="s", id="2-0")
+        stub.XRead.return_value = resp
+        result = client.xread([("s", "0")])
+        assert result == [("s", "1-0", {"f": "v"}), ("s", "2-0", {})]
+
+    def test_xread_with_count_sets_count(self):
+        client, stub = _make_client()
+        stub.XRead.return_value = rustycluster_pb2.XReadResponse()
+        client.xread([("s", "0")], count=5)
+        req = stub.XRead.call_args.args[0]
+        assert req.count == 5
+
+    def test_xread_no_count_does_not_set_count(self):
+        client, stub = _make_client()
+        stub.XRead.return_value = rustycluster_pb2.XReadResponse()
+        client.xread([("s", "0")])
+        req = stub.XRead.call_args.args[0]
+        assert req.HasField("count") is False
+
+    def test_xread_empty_returns_empty_list(self):
+        client, stub = _make_client()
+        stub.XRead.return_value = rustycluster_pb2.XReadResponse()
+        assert client.xread([("s", "$")]) == []
+
+
 class TestBatchOperations:
     def test_batch_write_success(self):
         client, stub = _make_client()
@@ -234,4 +414,4 @@ class TestContextManager:
         client, stub = _make_client()
         with client:
             pass
-        client._channel.close.assert_called_once()
+        client._manager.close.assert_called_once()

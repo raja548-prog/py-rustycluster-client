@@ -234,6 +234,86 @@ class KeyValueServiceStub(object):
                 request_serializer=rustycluster__pb2.EvalShaRequest.SerializeToString,
                 response_deserializer=rustycluster__pb2.EvalShaResponse.FromString,
                 _registered_method=True)
+        self.LPush = channel.unary_unary(
+                '/rustycluster.KeyValueService/LPush',
+                request_serializer=rustycluster__pb2.LPushRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LPushResponse.FromString,
+                _registered_method=True)
+        self.RPush = channel.unary_unary(
+                '/rustycluster.KeyValueService/RPush',
+                request_serializer=rustycluster__pb2.RPushRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.RPushResponse.FromString,
+                _registered_method=True)
+        self.LPop = channel.unary_unary(
+                '/rustycluster.KeyValueService/LPop',
+                request_serializer=rustycluster__pb2.LPopRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LPopResponse.FromString,
+                _registered_method=True)
+        self.RPop = channel.unary_unary(
+                '/rustycluster.KeyValueService/RPop',
+                request_serializer=rustycluster__pb2.RPopRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.RPopResponse.FromString,
+                _registered_method=True)
+        self.LRange = channel.unary_unary(
+                '/rustycluster.KeyValueService/LRange',
+                request_serializer=rustycluster__pb2.LRangeRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LRangeResponse.FromString,
+                _registered_method=True)
+        self.LLen = channel.unary_unary(
+                '/rustycluster.KeyValueService/LLen',
+                request_serializer=rustycluster__pb2.LLenRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LLenResponse.FromString,
+                _registered_method=True)
+        self.LTrim = channel.unary_unary(
+                '/rustycluster.KeyValueService/LTrim',
+                request_serializer=rustycluster__pb2.LTrimRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LTrimResponse.FromString,
+                _registered_method=True)
+        self.LIndex = channel.unary_unary(
+                '/rustycluster.KeyValueService/LIndex',
+                request_serializer=rustycluster__pb2.LIndexRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LIndexResponse.FromString,
+                _registered_method=True)
+        self.LSet = channel.unary_unary(
+                '/rustycluster.KeyValueService/LSet',
+                request_serializer=rustycluster__pb2.LSetRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LSetResponse.FromString,
+                _registered_method=True)
+        self.LRem = channel.unary_unary(
+                '/rustycluster.KeyValueService/LRem',
+                request_serializer=rustycluster__pb2.LRemRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LRemResponse.FromString,
+                _registered_method=True)
+        self.LInsert = channel.unary_unary(
+                '/rustycluster.KeyValueService/LInsert',
+                request_serializer=rustycluster__pb2.LInsertRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LInsertResponse.FromString,
+                _registered_method=True)
+        self.LPushX = channel.unary_unary(
+                '/rustycluster.KeyValueService/LPushX',
+                request_serializer=rustycluster__pb2.LPushXRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LPushXResponse.FromString,
+                _registered_method=True)
+        self.RPushX = channel.unary_unary(
+                '/rustycluster.KeyValueService/RPushX',
+                request_serializer=rustycluster__pb2.RPushXRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.RPushXResponse.FromString,
+                _registered_method=True)
+        self.LPos = channel.unary_unary(
+                '/rustycluster.KeyValueService/LPos',
+                request_serializer=rustycluster__pb2.LPosRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.LPosResponse.FromString,
+                _registered_method=True)
+        self.XAdd = channel.unary_unary(
+                '/rustycluster.KeyValueService/XAdd',
+                request_serializer=rustycluster__pb2.XAddRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.XAddResponse.FromString,
+                _registered_method=True)
+        self.XRead = channel.unary_unary(
+                '/rustycluster.KeyValueService/XRead',
+                request_serializer=rustycluster__pb2.XReadRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.XReadResponse.FromString,
+                _registered_method=True)
         self.BatchWrite = channel.unary_unary(
                 '/rustycluster.KeyValueService/BatchWrite',
                 request_serializer=rustycluster__pb2.BatchWriteRequest.SerializeToString,
@@ -492,6 +572,104 @@ class KeyValueServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def LPush(self, request, context):
+        """List (queue) operations
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RPush(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LPop(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RPop(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LRange(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LLen(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LTrim(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LIndex(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LSet(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LRem(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LInsert(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LPushX(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RPushX(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LPos(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def XAdd(self, request, context):
+        """Stream operations
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def XRead(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def BatchWrite(self, request, context):
         """Batch operations
         """
@@ -701,6 +879,86 @@ def add_KeyValueServiceServicer_to_server(servicer, server):
                     servicer.EvalSha,
                     request_deserializer=rustycluster__pb2.EvalShaRequest.FromString,
                     response_serializer=rustycluster__pb2.EvalShaResponse.SerializeToString,
+            ),
+            'LPush': grpc.unary_unary_rpc_method_handler(
+                    servicer.LPush,
+                    request_deserializer=rustycluster__pb2.LPushRequest.FromString,
+                    response_serializer=rustycluster__pb2.LPushResponse.SerializeToString,
+            ),
+            'RPush': grpc.unary_unary_rpc_method_handler(
+                    servicer.RPush,
+                    request_deserializer=rustycluster__pb2.RPushRequest.FromString,
+                    response_serializer=rustycluster__pb2.RPushResponse.SerializeToString,
+            ),
+            'LPop': grpc.unary_unary_rpc_method_handler(
+                    servicer.LPop,
+                    request_deserializer=rustycluster__pb2.LPopRequest.FromString,
+                    response_serializer=rustycluster__pb2.LPopResponse.SerializeToString,
+            ),
+            'RPop': grpc.unary_unary_rpc_method_handler(
+                    servicer.RPop,
+                    request_deserializer=rustycluster__pb2.RPopRequest.FromString,
+                    response_serializer=rustycluster__pb2.RPopResponse.SerializeToString,
+            ),
+            'LRange': grpc.unary_unary_rpc_method_handler(
+                    servicer.LRange,
+                    request_deserializer=rustycluster__pb2.LRangeRequest.FromString,
+                    response_serializer=rustycluster__pb2.LRangeResponse.SerializeToString,
+            ),
+            'LLen': grpc.unary_unary_rpc_method_handler(
+                    servicer.LLen,
+                    request_deserializer=rustycluster__pb2.LLenRequest.FromString,
+                    response_serializer=rustycluster__pb2.LLenResponse.SerializeToString,
+            ),
+            'LTrim': grpc.unary_unary_rpc_method_handler(
+                    servicer.LTrim,
+                    request_deserializer=rustycluster__pb2.LTrimRequest.FromString,
+                    response_serializer=rustycluster__pb2.LTrimResponse.SerializeToString,
+            ),
+            'LIndex': grpc.unary_unary_rpc_method_handler(
+                    servicer.LIndex,
+                    request_deserializer=rustycluster__pb2.LIndexRequest.FromString,
+                    response_serializer=rustycluster__pb2.LIndexResponse.SerializeToString,
+            ),
+            'LSet': grpc.unary_unary_rpc_method_handler(
+                    servicer.LSet,
+                    request_deserializer=rustycluster__pb2.LSetRequest.FromString,
+                    response_serializer=rustycluster__pb2.LSetResponse.SerializeToString,
+            ),
+            'LRem': grpc.unary_unary_rpc_method_handler(
+                    servicer.LRem,
+                    request_deserializer=rustycluster__pb2.LRemRequest.FromString,
+                    response_serializer=rustycluster__pb2.LRemResponse.SerializeToString,
+            ),
+            'LInsert': grpc.unary_unary_rpc_method_handler(
+                    servicer.LInsert,
+                    request_deserializer=rustycluster__pb2.LInsertRequest.FromString,
+                    response_serializer=rustycluster__pb2.LInsertResponse.SerializeToString,
+            ),
+            'LPushX': grpc.unary_unary_rpc_method_handler(
+                    servicer.LPushX,
+                    request_deserializer=rustycluster__pb2.LPushXRequest.FromString,
+                    response_serializer=rustycluster__pb2.LPushXResponse.SerializeToString,
+            ),
+            'RPushX': grpc.unary_unary_rpc_method_handler(
+                    servicer.RPushX,
+                    request_deserializer=rustycluster__pb2.RPushXRequest.FromString,
+                    response_serializer=rustycluster__pb2.RPushXResponse.SerializeToString,
+            ),
+            'LPos': grpc.unary_unary_rpc_method_handler(
+                    servicer.LPos,
+                    request_deserializer=rustycluster__pb2.LPosRequest.FromString,
+                    response_serializer=rustycluster__pb2.LPosResponse.SerializeToString,
+            ),
+            'XAdd': grpc.unary_unary_rpc_method_handler(
+                    servicer.XAdd,
+                    request_deserializer=rustycluster__pb2.XAddRequest.FromString,
+                    response_serializer=rustycluster__pb2.XAddResponse.SerializeToString,
+            ),
+            'XRead': grpc.unary_unary_rpc_method_handler(
+                    servicer.XRead,
+                    request_deserializer=rustycluster__pb2.XReadRequest.FromString,
+                    response_serializer=rustycluster__pb2.XReadResponse.SerializeToString,
             ),
             'BatchWrite': grpc.unary_unary_rpc_method_handler(
                     servicer.BatchWrite,
@@ -1788,6 +2046,438 @@ class KeyValueService(object):
             '/rustycluster.KeyValueService/EvalSha',
             rustycluster__pb2.EvalShaRequest.SerializeToString,
             rustycluster__pb2.EvalShaResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LPush(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LPush',
+            rustycluster__pb2.LPushRequest.SerializeToString,
+            rustycluster__pb2.LPushResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RPush(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/RPush',
+            rustycluster__pb2.RPushRequest.SerializeToString,
+            rustycluster__pb2.RPushResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LPop(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LPop',
+            rustycluster__pb2.LPopRequest.SerializeToString,
+            rustycluster__pb2.LPopResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RPop(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/RPop',
+            rustycluster__pb2.RPopRequest.SerializeToString,
+            rustycluster__pb2.RPopResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LRange(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LRange',
+            rustycluster__pb2.LRangeRequest.SerializeToString,
+            rustycluster__pb2.LRangeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LLen(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LLen',
+            rustycluster__pb2.LLenRequest.SerializeToString,
+            rustycluster__pb2.LLenResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LTrim(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LTrim',
+            rustycluster__pb2.LTrimRequest.SerializeToString,
+            rustycluster__pb2.LTrimResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LIndex(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LIndex',
+            rustycluster__pb2.LIndexRequest.SerializeToString,
+            rustycluster__pb2.LIndexResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LSet(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LSet',
+            rustycluster__pb2.LSetRequest.SerializeToString,
+            rustycluster__pb2.LSetResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LRem(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LRem',
+            rustycluster__pb2.LRemRequest.SerializeToString,
+            rustycluster__pb2.LRemResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LInsert(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LInsert',
+            rustycluster__pb2.LInsertRequest.SerializeToString,
+            rustycluster__pb2.LInsertResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LPushX(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LPushX',
+            rustycluster__pb2.LPushXRequest.SerializeToString,
+            rustycluster__pb2.LPushXResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RPushX(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/RPushX',
+            rustycluster__pb2.RPushXRequest.SerializeToString,
+            rustycluster__pb2.RPushXResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LPos(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/LPos',
+            rustycluster__pb2.LPosRequest.SerializeToString,
+            rustycluster__pb2.LPosResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def XAdd(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/XAdd',
+            rustycluster__pb2.XAddRequest.SerializeToString,
+            rustycluster__pb2.XAddResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def XRead(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/XRead',
+            rustycluster__pb2.XReadRequest.SerializeToString,
+            rustycluster__pb2.XReadResponse.FromString,
             options,
             channel_credentials,
             insecure,

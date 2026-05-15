@@ -7,8 +7,10 @@ a fully initialized, authenticated client instance.
 Example:
     from rustycluster import get_client, RustyClusterConfig
 
-    config = RustyClusterConfig(host="localhost", port=50051,
-                                 username="admin", password="secret")
+    config = RustyClusterConfig(
+        nodes="localhost:50051,localhost:50052",
+        username="admin", password="secret",
+    )
     client = get_client(config)
 
     client.set("hello", "world")
@@ -24,11 +26,10 @@ from __future__ import annotations
 
 import logging
 from types import TracebackType
-from typing import Optional
+from typing import Any, Optional
 
 import grpc
 
-from rustycluster.auth import AuthManager
 from rustycluster.config import RustyClusterConfig
 from rustycluster.exceptions import (
     BatchOperationError,
@@ -36,11 +37,36 @@ from rustycluster.exceptions import (
     OperationError,
     from_grpc_error,
 )
-from rustycluster.interceptors import build_interceptors
+from rustycluster.failover import NodeManager
 from rustycluster.proto import rustycluster_pb2, rustycluster_pb2_grpc
 from rustycluster.retry import RetryPolicy
 
 logger = logging.getLogger("rustycluster.client")
+
+
+class _StubProxy:
+    """
+    Lazily resolves attribute access to the NodeManager's current stub.
+
+    Each attribute lookup (e.g. `proxy.Set`) returns a thin wrapper function
+    whose `__name__` is the gRPC method name. The retry layer reads
+    `__name__` and re-binds the call to the latest stub on every attempt,
+    which is how failover transparently swaps the underlying connection.
+    """
+
+    __slots__ = ("_manager",)
+
+    def __init__(self, manager: NodeManager) -> None:
+        self._manager = manager
+
+    def __getattr__(self, name: str) -> Any:
+        manager = self._manager
+
+        def call(request: Any, **kwargs: Any) -> Any:
+            return getattr(manager.stub, name)(request, **kwargs)
+
+        call.__name__ = name
+        return call
 
 
 class RustyClusterClient:
@@ -57,20 +83,19 @@ class RustyClusterClient:
 
     def __init__(
         self,
-        stub: rustycluster_pb2_grpc.KeyValueServiceStub,
-        auth_manager: AuthManager,
+        manager: NodeManager,
         config: RustyClusterConfig,
-        channel: grpc.Channel,
     ) -> None:
-        self._stub = stub
-        self._auth = auth_manager
+        self._manager = manager
         self._config = config
-        self._channel = channel
+        self._stub = _StubProxy(manager)
         self._retry = RetryPolicy(
             max_retries=config.max_retries,
             backoff_base=config.retry_backoff_base,
             backoff_max=config.retry_backoff_max,
             on_reauth=self.reauthenticate,
+            stub_provider=lambda: manager.stub,
+            on_node_failure=manager.failover,
         )
 
     # ──────────────────────────────────────────────
@@ -90,20 +115,17 @@ class RustyClusterClient:
 
     def close(self) -> None:
         """Close the underlying gRPC channel and release resources."""
-        try:
-            self._channel.close()
-            logger.debug("gRPC channel closed")
-        except Exception as exc:
-            logger.warning("Error closing gRPC channel: %s", exc)
+        self._manager.close()
+        logger.debug("gRPC channel closed")
 
     # ──────────────────────────────────────────────
     # Auth
     # ──────────────────────────────────────────────
 
     def reauthenticate(self) -> None:
-        """Re-authenticate and refresh the session token."""
+        """Re-authenticate and refresh the session token on the current node."""
         logger.info("Re-authenticating with RustyCluster server")
-        self._auth.authenticate(timeout=self._config.timeout_seconds)
+        self._manager.auth_manager.authenticate(timeout=self._config.timeout_seconds)
 
     # ──────────────────────────────────────────────
     # System operations
@@ -825,6 +847,343 @@ class RustyClusterClient:
         )
         # Proto returns empty string for missing keys; normalize to None
         return [v if v != "" else None for v in resp.values]
+
+    # ──────────────────────────────────────────────
+    # List (queue) operations
+    # ──────────────────────────────────────────────
+
+    def lpush(
+        self,
+        key: str,
+        *values: str,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> int:
+        """Prepend one or more values to a list. Returns new list length."""
+        resp = self._retry.call(
+            self._stub.LPush,
+            rustycluster_pb2.LPushRequest(
+                key=key,
+                values=list(values),
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.length
+
+    def rpush(
+        self,
+        key: str,
+        *values: str,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> int:
+        """Append one or more values to a list. Returns new list length."""
+        resp = self._retry.call(
+            self._stub.RPush,
+            rustycluster_pb2.RPushRequest(
+                key=key,
+                values=list(values),
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.length
+
+    def lpushx(
+        self,
+        key: str,
+        *values: str,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> int:
+        """Prepend values only if the list exists. Returns 0 if absent."""
+        resp = self._retry.call(
+            self._stub.LPushX,
+            rustycluster_pb2.LPushXRequest(
+                key=key,
+                values=list(values),
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.length
+
+    def rpushx(
+        self,
+        key: str,
+        *values: str,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> int:
+        """Append values only if the list exists. Returns 0 if absent."""
+        resp = self._retry.call(
+            self._stub.RPushX,
+            rustycluster_pb2.RPushXRequest(
+                key=key,
+                values=list(values),
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.length
+
+    def lpop(
+        self,
+        key: str,
+        count: Optional[int] = None,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> list[str]:
+        """
+        Pop one or more values from the head of a list.
+
+        If count is None, pops a single element. Always returns a list
+        (possibly empty if the key is missing or list is empty).
+        """
+        req = rustycluster_pb2.LPopRequest(
+            key=key,
+            skip_replication=skip_replication,
+            skip_site_replication=skip_site_replication,
+        )
+        if count is not None:
+            req.count = count
+        resp = self._retry.call(
+            self._stub.LPop, req, timeout=self._config.timeout_seconds
+        )
+        return list(resp.values)
+
+    def rpop(
+        self,
+        key: str,
+        count: Optional[int] = None,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> list[str]:
+        """Pop one or more values from the tail of a list."""
+        req = rustycluster_pb2.RPopRequest(
+            key=key,
+            skip_replication=skip_replication,
+            skip_site_replication=skip_site_replication,
+        )
+        if count is not None:
+            req.count = count
+        resp = self._retry.call(
+            self._stub.RPop, req, timeout=self._config.timeout_seconds
+        )
+        return list(resp.values)
+
+    def lrange(self, key: str, start: int, stop: int) -> list[str]:
+        """Read a slice of a list. `stop` is inclusive (Redis semantics)."""
+        resp = self._retry.call(
+            self._stub.LRange,
+            rustycluster_pb2.LRangeRequest(key=key, start=start, stop=stop),
+            timeout=self._config.timeout_seconds,
+        )
+        return list(resp.values)
+
+    def llen(self, key: str) -> int:
+        """Return the length of a list. Returns 0 if the key is missing."""
+        resp = self._retry.call(
+            self._stub.LLen,
+            rustycluster_pb2.LLenRequest(key=key),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.length
+
+    def ltrim(
+        self,
+        key: str,
+        start: int,
+        stop: int,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> bool:
+        """Trim a list to the given inclusive range."""
+        resp = self._retry.call(
+            self._stub.LTrim,
+            rustycluster_pb2.LTrimRequest(
+                key=key,
+                start=start,
+                stop=stop,
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.success
+
+    def lindex(self, key: str, index: int) -> Optional[str]:
+        """Return the element at the given index, or None if out of range."""
+        resp = self._retry.call(
+            self._stub.LIndex,
+            rustycluster_pb2.LIndexRequest(key=key, index=index),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.value if resp.found else None
+
+    def lset(
+        self,
+        key: str,
+        index: int,
+        value: str,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> bool:
+        """Set the element at the given index. Errors if out of range."""
+        resp = self._retry.call(
+            self._stub.LSet,
+            rustycluster_pb2.LSetRequest(
+                key=key,
+                index=index,
+                value=value,
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.success
+
+    def lrem(
+        self,
+        key: str,
+        count: int,
+        element: str,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> int:
+        """
+        Remove up to |count| elements equal to `element`.
+
+        count > 0  -> remove from head; count < 0 -> remove from tail;
+        count == 0 -> remove all matches. Returns number removed.
+        """
+        resp = self._retry.call(
+            self._stub.LRem,
+            rustycluster_pb2.LRemRequest(
+                key=key,
+                count=count,
+                element=element,
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.removed
+
+    def linsert(
+        self,
+        key: str,
+        pivot: str,
+        element: str,
+        before: bool = True,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> int:
+        """
+        Insert `element` before/after the first occurrence of `pivot`.
+
+        Returns the new list length, -1 if pivot not found, 0 if key absent.
+        """
+        resp = self._retry.call(
+            self._stub.LInsert,
+            rustycluster_pb2.LInsertRequest(
+                key=key,
+                before=before,
+                pivot=pivot,
+                element=element,
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.length
+
+    def lpos(
+        self,
+        key: str,
+        element: str,
+        rank: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> list[int]:
+        """
+        Find positions of `element` in the list.
+
+        Args:
+            rank: 1-based; negative searches from the tail.
+            count: Maximum number of positions to return (None = at most one).
+        """
+        req = rustycluster_pb2.LPosRequest(key=key, element=element)
+        if rank is not None:
+            req.rank = rank
+        if count is not None:
+            req.count = count
+        resp = self._retry.call(
+            self._stub.LPos, req, timeout=self._config.timeout_seconds
+        )
+        return list(resp.positions)
+
+    # ──────────────────────────────────────────────
+    # Stream operations
+    # ──────────────────────────────────────────────
+
+    def xadd(
+        self,
+        key: str,
+        fields: dict[str, str],
+        id: str = "*",
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> str:
+        """
+        Append an entry to a stream. Pass id="*" to let the server assign one.
+
+        Returns the resolved entry id.
+        """
+        resp = self._retry.call(
+            self._stub.XAdd,
+            rustycluster_pb2.XAddRequest(
+                key=key,
+                id=id,
+                fields=fields,
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.id
+
+    def xread(
+        self,
+        streams: list[tuple[str, str]],
+        count: Optional[int] = None,
+    ) -> list[tuple[str, str, dict[str, str]]]:
+        """
+        Read entries from one or more streams (non-blocking).
+
+        Args:
+            streams: List of (key, last_id) pairs. Use "0" to read from the
+                start, "$" for newest only.
+            count: Optional cap on entries returned across all streams.
+
+        Returns:
+            List of (key, id, fields) tuples.
+        """
+        req = rustycluster_pb2.XReadRequest(
+            streams=[
+                rustycluster_pb2.XReadStreamKey(key=k, id=i) for k, i in streams
+            ],
+        )
+        if count is not None:
+            req.count = count
+        resp = self._retry.call(
+            self._stub.XRead, req, timeout=self._config.timeout_seconds
+        )
+        return [(e.key, e.id, dict(e.fields)) for e in resp.entries]
 
     # ──────────────────────────────────────────────
     # Script operations

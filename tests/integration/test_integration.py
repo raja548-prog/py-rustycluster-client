@@ -11,6 +11,7 @@ Run with:
 from __future__ import annotations
 
 import threading
+import time
 from concurrent import futures
 from unittest.mock import MagicMock
 
@@ -27,6 +28,9 @@ class MockKeyValueServicer(rustycluster_pb2_grpc.KeyValueServiceServicer):
         self._store: dict[str, str] = {}
         self._hashes: dict[str, dict[str, str]] = {}
         self._sets: dict[str, set[str]] = {}
+        self._lists: dict[str, list[str]] = {}
+        self._streams: dict[str, list[tuple[str, dict[str, str]]]] = {}
+        self._stream_seq: int = 0
         self._session_token = "test-session-token-abc123"
 
     def Authenticate(self, request, context):
@@ -181,10 +185,188 @@ class MockKeyValueServicer(rustycluster_pb2_grpc.KeyValueServiceServicer):
     def EvalSha(self, request, context):
         return rustycluster_pb2.EvalShaResponse(success=True, result="script_result")
 
+    # ─── List operations ───
+
+    def LPush(self, request, context):
+        lst = self._lists.setdefault(request.key, [])
+        for v in request.values:
+            lst.insert(0, v)
+        return rustycluster_pb2.LPushResponse(length=len(lst))
+
+    def RPush(self, request, context):
+        lst = self._lists.setdefault(request.key, [])
+        lst.extend(request.values)
+        return rustycluster_pb2.RPushResponse(length=len(lst))
+
+    def LPushX(self, request, context):
+        if request.key not in self._lists:
+            return rustycluster_pb2.LPushXResponse(length=0)
+        lst = self._lists[request.key]
+        for v in request.values:
+            lst.insert(0, v)
+        return rustycluster_pb2.LPushXResponse(length=len(lst))
+
+    def RPushX(self, request, context):
+        if request.key not in self._lists:
+            return rustycluster_pb2.RPushXResponse(length=0)
+        lst = self._lists[request.key]
+        lst.extend(request.values)
+        return rustycluster_pb2.RPushXResponse(length=len(lst))
+
+    def _pop(self, key, count, from_left):
+        lst = self._lists.get(key)
+        if not lst:
+            return []
+        n = count if count > 0 else 1
+        n = min(n, len(lst))
+        if from_left:
+            popped = lst[:n]
+            del lst[:n]
+        else:
+            popped = list(reversed(lst[-n:]))
+            del lst[-n:]
+        return popped
+
+    def LPop(self, request, context):
+        count = request.count if request.HasField("count") else 0
+        return rustycluster_pb2.LPopResponse(
+            values=self._pop(request.key, count, from_left=True)
+        )
+
+    def RPop(self, request, context):
+        count = request.count if request.HasField("count") else 0
+        return rustycluster_pb2.RPopResponse(
+            values=self._pop(request.key, count, from_left=False)
+        )
+
+    def LRange(self, request, context):
+        lst = self._lists.get(request.key, [])
+        stop = request.stop
+        # Redis-style inclusive stop; -1 means "to the end"
+        end = None if stop == -1 else stop + 1
+        return rustycluster_pb2.LRangeResponse(values=lst[request.start:end])
+
+    def LLen(self, request, context):
+        return rustycluster_pb2.LLenResponse(length=len(self._lists.get(request.key, [])))
+
+    def LTrim(self, request, context):
+        if request.key in self._lists:
+            stop = request.stop
+            end = None if stop == -1 else stop + 1
+            self._lists[request.key] = self._lists[request.key][request.start:end]
+        return rustycluster_pb2.LTrimResponse(success=True)
+
+    def LIndex(self, request, context):
+        lst = self._lists.get(request.key, [])
+        idx = request.index
+        if -len(lst) <= idx < len(lst):
+            return rustycluster_pb2.LIndexResponse(found=True, value=lst[idx])
+        return rustycluster_pb2.LIndexResponse(found=False, value="")
+
+    def LSet(self, request, context):
+        lst = self._lists.get(request.key)
+        idx = request.index
+        if lst is None or not (-len(lst) <= idx < len(lst)):
+            context.set_code(grpc.StatusCode.OUT_OF_RANGE)
+            context.set_details("index out of range")
+            return rustycluster_pb2.LSetResponse(success=False)
+        lst[idx] = request.value
+        return rustycluster_pb2.LSetResponse(success=True)
+
+    def LRem(self, request, context):
+        lst = self._lists.get(request.key)
+        if not lst:
+            return rustycluster_pb2.LRemResponse(removed=0)
+        count = request.count
+        element = request.element
+        removed = 0
+        if count == 0:
+            new_lst = [x for x in lst if x != element]
+            removed = len(lst) - len(new_lst)
+            self._lists[request.key] = new_lst
+        elif count > 0:
+            new_lst = []
+            for x in lst:
+                if removed < count and x == element:
+                    removed += 1
+                else:
+                    new_lst.append(x)
+            self._lists[request.key] = new_lst
+        else:  # count < 0 -> from tail
+            cap = -count
+            new_rev = []
+            for x in reversed(lst):
+                if removed < cap and x == element:
+                    removed += 1
+                else:
+                    new_rev.append(x)
+            self._lists[request.key] = list(reversed(new_rev))
+        return rustycluster_pb2.LRemResponse(removed=removed)
+
+    def LInsert(self, request, context):
+        if request.key not in self._lists:
+            return rustycluster_pb2.LInsertResponse(length=0)
+        lst = self._lists[request.key]
+        try:
+            idx = lst.index(request.pivot)
+        except ValueError:
+            return rustycluster_pb2.LInsertResponse(length=-1)
+        insert_at = idx if request.before else idx + 1
+        lst.insert(insert_at, request.element)
+        return rustycluster_pb2.LInsertResponse(length=len(lst))
+
+    def LPos(self, request, context):
+        lst = self._lists.get(request.key, [])
+        element = request.element
+        rank = request.rank if request.HasField("rank") else 1
+        count = request.count if request.HasField("count") else 1
+        max_results = 0 if count == 0 else count  # 0 means "all"
+        if rank == 0:
+            return rustycluster_pb2.LPosResponse(positions=[])
+        # Build the search iterator
+        indices = range(len(lst)) if rank > 0 else range(len(lst) - 1, -1, -1)
+        skip = abs(rank) - 1
+        matches: list[int] = []
+        for i in indices:
+            if lst[i] == element:
+                if skip > 0:
+                    skip -= 1
+                    continue
+                matches.append(i)
+                if max_results and len(matches) >= max_results:
+                    break
+        return rustycluster_pb2.LPosResponse(positions=matches)
+
+    # ─── Stream operations ───
+
+    def _next_stream_id(self) -> str:
+        self._stream_seq += 1
+        return f"{int(time.time() * 1000)}-{self._stream_seq}"
+
+    def XAdd(self, request, context):
+        resolved = self._next_stream_id() if request.id == "*" else request.id
+        self._streams.setdefault(request.key, []).append((resolved, dict(request.fields)))
+        return rustycluster_pb2.XAddResponse(id=resolved)
+
+    def XRead(self, request, context):
+        max_count = request.count if request.HasField("count") else 0
+        entries: list[rustycluster_pb2.XReadEntry] = []
+        for s in request.streams:
+            for entry_id, fields in self._streams.get(s.key, []):
+                if entry_id > s.id:
+                    e = rustycluster_pb2.XReadEntry(key=s.key, id=entry_id)
+                    e.fields.update(fields)
+                    entries.append(e)
+                    if max_count and len(entries) >= max_count:
+                        break
+            if max_count and len(entries) >= max_count:
+                break
+        return rustycluster_pb2.XReadResponse(entries=entries)
+
     def BatchWrite(self, request, context):
         results = []
+        _OT = rustycluster_pb2.BatchOperation.OperationType
         for op in request.operations:
-            _OT = rustycluster_pb2.BatchOperation.OperationType
             if op.operation_type == _OT.SET:
                 self._store[op.key] = op.value
                 results.append(True)
@@ -193,6 +375,18 @@ class MockKeyValueServicer(rustycluster_pb2_grpc.KeyValueServiceServicer):
                 results.append(True)
             elif op.operation_type == _OT.HSET:
                 self._hashes.setdefault(op.key, {})[op.field] = op.value
+                results.append(True)
+            elif op.operation_type == _OT.LPUSH:
+                lst = self._lists.setdefault(op.key, [])
+                for v in op.members:
+                    lst.insert(0, v)
+                results.append(True)
+            elif op.operation_type == _OT.RPUSH:
+                self._lists.setdefault(op.key, []).extend(op.members)
+                results.append(True)
+            elif op.operation_type == _OT.XADD:
+                resolved = self._next_stream_id() if op.value == "*" else op.value
+                self._streams.setdefault(op.key, []).append((resolved, dict(op.hash_fields)))
                 results.append(True)
             else:
                 results.append(True)
@@ -252,10 +446,8 @@ def client(mock_server):
     """Return a RustyClusterClient connected to the mock server."""
     from rustycluster import RustyClusterConfig, get_client
     target, _ = mock_server
-    host, port = target.split(":")
     config = RustyClusterConfig(
-        host=host,
-        port=int(port),
+        nodes=target,
         username="admin",
         password="secret",
         max_retries=0,
@@ -365,9 +557,228 @@ class TestIntegrationBatchOps:
         assert client.hget("integ:bh", "field") == "fval"
 
 
+class TestIntegrationListOps:
+    def test_lpush_then_lrange(self, client):
+        client.lpush("integ:q", "a", "b", "c")
+        # lpush prepends each value in order -> "a","b","c" => head is "c"
+        assert client.lrange("integ:q", 0, -1) == ["c", "b", "a"]
+
+    def test_rpush_and_llen(self, client):
+        client.rpush("integ:rq", "x", "y", "z")
+        assert client.llen("integ:rq") == 3
+        assert client.lrange("integ:rq", 0, -1) == ["x", "y", "z"]
+
+    def test_lpop_missing_returns_empty(self, client):
+        assert client.lpop("integ:no_such_list_xyz") == []
+
+    def test_lpop_default_single(self, client):
+        client.rpush("integ:lp", "1", "2", "3")
+        assert client.lpop("integ:lp") == ["1"]
+
+    def test_lpop_with_count(self, client):
+        client.rpush("integ:lp2", "a", "b", "c", "d")
+        assert client.lpop("integ:lp2", count=2) == ["a", "b"]
+        assert client.lrange("integ:lp2", 0, -1) == ["c", "d"]
+
+    def test_rpop_with_count(self, client):
+        client.rpush("integ:rp", "1", "2", "3", "4")
+        assert client.rpop("integ:rp", count=2) == ["4", "3"]
+
+    def test_lpushx_on_absent_returns_zero(self, client):
+        assert client.lpushx("integ:nope_xxx", "x") == 0
+        # ensure the list was NOT created
+        assert client.llen("integ:nope_xxx") == 0
+
+    def test_lpushx_on_existing(self, client):
+        client.rpush("integ:lpx", "init")
+        assert client.lpushx("integ:lpx", "head") == 2
+        assert client.lrange("integ:lpx", 0, -1) == ["head", "init"]
+
+    def test_rpushx_on_absent_returns_zero(self, client):
+        assert client.rpushx("integ:nope_yyy", "x") == 0
+
+    def test_ltrim_reflected_in_lrange(self, client):
+        client.rpush("integ:lt", "a", "b", "c", "d", "e")
+        assert client.ltrim("integ:lt", 1, 3) is True
+        assert client.lrange("integ:lt", 0, -1) == ["b", "c", "d"]
+
+    def test_lindex(self, client):
+        client.rpush("integ:li", "x", "y", "z")
+        assert client.lindex("integ:li", 0) == "x"
+        assert client.lindex("integ:li", -1) == "z"
+        assert client.lindex("integ:li", 99) is None
+
+    def test_lset(self, client):
+        client.rpush("integ:ls", "a", "b", "c")
+        assert client.lset("integ:ls", 1, "B") is True
+        assert client.lrange("integ:ls", 0, -1) == ["a", "B", "c"]
+
+    def test_lrem_positive_count(self, client):
+        client.rpush("integ:lr", "a", "b", "a", "c", "a")
+        assert client.lrem("integ:lr", 2, "a") == 2
+        # removes first two "a" from head
+        assert client.lrange("integ:lr", 0, -1) == ["b", "c", "a"]
+
+    def test_lrem_negative_count(self, client):
+        client.rpush("integ:lr2", "a", "b", "a", "c", "a")
+        assert client.lrem("integ:lr2", -2, "a") == 2
+        # removes last two "a" from tail
+        assert client.lrange("integ:lr2", 0, -1) == ["a", "b", "c"]
+
+    def test_lrem_zero_removes_all(self, client):
+        client.rpush("integ:lr3", "a", "b", "a", "c", "a")
+        assert client.lrem("integ:lr3", 0, "a") == 3
+        assert client.lrange("integ:lr3", 0, -1) == ["b", "c"]
+
+    def test_linsert_before(self, client):
+        client.rpush("integ:in", "a", "c")
+        assert client.linsert("integ:in", "c", "b", before=True) == 3
+        assert client.lrange("integ:in", 0, -1) == ["a", "b", "c"]
+
+    def test_linsert_after(self, client):
+        client.rpush("integ:in2", "a", "c")
+        assert client.linsert("integ:in2", "a", "b", before=False) == 3
+        assert client.lrange("integ:in2", 0, -1) == ["a", "b", "c"]
+
+    def test_linsert_pivot_missing(self, client):
+        client.rpush("integ:in3", "a", "b")
+        assert client.linsert("integ:in3", "z", "x") == -1
+
+    def test_linsert_absent_key(self, client):
+        assert client.linsert("integ:no_in_key", "p", "v") == 0
+
+    def test_lpos_no_match(self, client):
+        client.rpush("integ:lpos0", "a", "b", "c")
+        assert client.lpos("integ:lpos0", "z") == []
+
+    def test_lpos_first_match(self, client):
+        client.rpush("integ:lpos1", "a", "b", "a", "c", "a")
+        # default rank=1, count=1 (single match)
+        assert client.lpos("integ:lpos1", "a") == [0]
+
+    def test_lpos_with_rank_and_count(self, client):
+        client.rpush("integ:lpos2", "a", "b", "a", "c", "a")
+        assert client.lpos("integ:lpos2", "a", rank=1, count=0) == [0, 2, 4]
+        assert client.lpos("integ:lpos2", "a", rank=-1, count=2) == [4, 2]
+
+
+class TestIntegrationStreamOps:
+    def test_xadd_auto_id_and_xread(self, client):
+        eid = client.xadd("integ:s1", {"f1": "v1", "f2": "v2"})
+        assert eid != "" and eid != "*"
+        entries = client.xread([("integ:s1", "0")])
+        assert len(entries) == 1
+        key, returned_id, fields = entries[0]
+        assert key == "integ:s1"
+        assert returned_id == eid
+        assert fields == {"f1": "v1", "f2": "v2"}
+
+    def test_xread_after_last_id_returns_empty(self, client):
+        eid = client.xadd("integ:s2", {"k": "v"})
+        # Ask for entries strictly after the only known id
+        assert client.xread([("integ:s2", eid)]) == []
+
+    def test_xread_with_count(self, client):
+        client.xadd("integ:s3", {"a": "1"})
+        client.xadd("integ:s3", {"a": "2"})
+        client.xadd("integ:s3", {"a": "3"})
+        entries = client.xread([("integ:s3", "0")], count=2)
+        assert len(entries) == 2
+
+
+class TestIntegrationListStreamBatch:
+    def test_batch_write_list_and_stream(self, client):
+        from rustycluster.batch import BatchOperationBuilder as BOB
+        ops = [
+            BOB.lpush("integ:bq", ["a", "b"]),
+            BOB.xadd("integ:bs", {"f": "v"}),
+        ]
+        results = client.batch_write(ops)
+        assert all(results)
+        assert client.lrange("integ:bq", 0, -1) == ["b", "a"]
+        entries = client.xread([("integ:bs", "0")])
+        assert len(entries) == 1
+        assert entries[0][2] == {"f": "v"}
+
+
 class TestIntegrationSystem:
     def test_ping(self, client):
         assert client.ping() is True
 
     def test_health_check(self, client):
         assert client.health_check() is True
+
+
+def _start_mock_server() -> tuple[grpc.Server, str]:
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
+    servicer = MockKeyValueServicer()
+    rustycluster_pb2_grpc.add_KeyValueServiceServicer_to_server(servicer, server)
+    port = server.add_insecure_port("localhost:0")
+    server.start()
+    return server, f"localhost:{port}"
+
+
+class TestIntegrationFailover:
+    def test_fails_over_when_primary_is_down(self, caplog):
+        from rustycluster import RustyClusterConfig, get_client
+
+        server_a, target_a = _start_mock_server()
+        server_b, target_b = _start_mock_server()
+
+        try:
+            config = RustyClusterConfig(
+                nodes=f"{target_a},{target_b}",
+                username="admin",
+                password="secret",
+                max_retries=1,
+                retry_backoff_base=0.01,
+                retry_backoff_max=0.1,
+                timeout_seconds=2.0,
+            )
+            c = get_client(config)
+            try:
+                assert c.set("failover:k", "v1") is True
+                assert c.get("failover:k") == "v1"
+
+                # Kill the primary
+                server_a.stop(grace=0)
+
+                import logging as _logging
+                with caplog.at_level(_logging.WARNING, logger="rustycluster.failover"):
+                    assert c.set("failover:k", "v2") is True
+                    assert c.get("failover:k") == "v2"
+
+                assert any(
+                    "Failing over" in r.message and target_a in r.message and target_b in r.message
+                    for r in caplog.records
+                ), f"expected failover log, got: {[r.message for r in caplog.records]}"
+            finally:
+                c.close()
+        finally:
+            server_a.stop(grace=0)
+            server_b.stop(grace=0)
+
+    def test_raises_when_all_nodes_exhausted(self):
+        from rustycluster import RustyClusterConfig, get_client
+        from rustycluster.exceptions import ConnectionError as RCConnectionError
+
+        server_a, target_a = _start_mock_server()
+        server_b, target_b = _start_mock_server()
+
+        config = RustyClusterConfig(
+            nodes=f"{target_a},{target_b}",
+            username="admin",
+            password="secret",
+            max_retries=1,
+            retry_backoff_base=0.01,
+            retry_backoff_max=0.1,
+            timeout_seconds=2.0,
+        )
+        c = get_client(config)
+        try:
+            server_a.stop(grace=0)
+            server_b.stop(grace=0)
+            with pytest.raises(RCConnectionError):
+                c.set("failover:k", "v")
+        finally:
+            c.close()

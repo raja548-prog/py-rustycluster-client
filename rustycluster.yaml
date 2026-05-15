@@ -11,8 +11,9 @@
 rustycluster:
 
   # ── Connection ──────────────────────────────────────────────────────────────
-  host: localhost
-  port: 50051
+  # Comma-separated host:port list. The first entry is the primary; if it
+  # becomes unreachable the client fails over to the next entry in order.
+  nodes: "localhost:50051,localhost:50052,localhost:50053"
 
   # ── Authentication ──────────────────────────────────────────────────────────
   username: testuser

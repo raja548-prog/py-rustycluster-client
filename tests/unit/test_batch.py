@@ -87,3 +87,62 @@ class TestBatchOperationBuilder:
         assert op.operation_type == _OT.HEXPIRE
         assert op.seconds == 60
         assert list(op.fields) == ["f1", "f2"]
+
+
+class TestBatchOperationBuilderListStream:
+    def test_lpush_uses_members_field(self):
+        op = BOB.lpush("q", ["a", "b"])
+        assert op.operation_type == _OT.LPUSH
+        assert op.key == "q"
+        assert list(op.members) == ["a", "b"]
+
+    def test_rpush_uses_members_field(self):
+        op = BOB.rpush("q", ["x", "y"])
+        assert op.operation_type == _OT.RPUSH
+        assert list(op.members) == ["x", "y"]
+
+    def test_lpushx_and_rpushx(self):
+        lop = BOB.lpushx("q", ["v"])
+        rop = BOB.rpushx("q", ["v"])
+        assert lop.operation_type == _OT.LPUSHX
+        assert rop.operation_type == _OT.RPUSHX
+        assert list(lop.members) == ["v"]
+        assert list(rop.members) == ["v"]
+
+    def test_lpop_no_count_does_not_set_int_value(self):
+        op = BOB.lpop("q")
+        assert op.operation_type == _OT.LPOP
+        assert op.HasField("int_value") is False
+
+    def test_lpop_with_count_sets_int_value(self):
+        op = BOB.lpop("q", count=3)
+        assert op.HasField("int_value") is True
+        assert op.int_value == 3
+
+    def test_rpop_with_count(self):
+        op = BOB.rpop("q", count=2)
+        assert op.operation_type == _OT.RPOP
+        assert op.int_value == 2
+
+    def test_lset_uses_int_value_for_index(self):
+        op = BOB.lset("q", 4, "new")
+        assert op.operation_type == _OT.LSET
+        assert op.int_value == 4
+        assert op.value == "new"
+
+    def test_lrem_uses_int_value_for_count(self):
+        op = BOB.lrem("q", -2, "el")
+        assert op.operation_type == _OT.LREM
+        assert op.int_value == -2
+        assert op.value == "el"
+
+    def test_xadd_default_id_is_star(self):
+        op = BOB.xadd("s", {"f": "v"})
+        assert op.operation_type == _OT.XADD
+        assert op.value == "*"
+        assert dict(op.hash_fields) == {"f": "v"}
+
+    def test_xadd_custom_id_and_fields(self):
+        op = BOB.xadd("s", {"a": "1", "b": "2"}, id="42-0")
+        assert op.value == "42-0"
+        assert dict(op.hash_fields) == {"a": "1", "b": "2"}

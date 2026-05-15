@@ -158,3 +158,75 @@ class BatchOperationBuilder:
             field=field.decode("latin-1"),
             bytes_value=value,
         )
+
+    # List & stream batch builders. The proto's BatchOperation message gained
+    # new OperationType enum values for list/stream ops but no dedicated
+    # payload fields, so each builder reuses an existing slot:
+    #   members      -> push values
+    #   int_value    -> count / index
+    #   value        -> element / stream id
+    #   hash_fields  -> XAdd field map
+    # LTRIM (needs two int64s), LINSERT (needs a bool + pivot + element),
+    # and LPOS (read-only) cannot be expressed with the current fields and
+    # are intentionally omitted until the proto adds the missing slots.
+
+    @staticmethod
+    def lpush(key: str, values: list[str]) -> _Op:
+        """Create an LPUSH operation."""
+        op = _Op(operation_type=_OT.LPUSH, key=key)
+        op.members.extend(values)
+        return op
+
+    @staticmethod
+    def rpush(key: str, values: list[str]) -> _Op:
+        """Create an RPUSH operation."""
+        op = _Op(operation_type=_OT.RPUSH, key=key)
+        op.members.extend(values)
+        return op
+
+    @staticmethod
+    def lpushx(key: str, values: list[str]) -> _Op:
+        """Create an LPUSHX operation."""
+        op = _Op(operation_type=_OT.LPUSHX, key=key)
+        op.members.extend(values)
+        return op
+
+    @staticmethod
+    def rpushx(key: str, values: list[str]) -> _Op:
+        """Create an RPUSHX operation."""
+        op = _Op(operation_type=_OT.RPUSHX, key=key)
+        op.members.extend(values)
+        return op
+
+    @staticmethod
+    def lpop(key: str, count: int | None = None) -> _Op:
+        """Create an LPOP operation. Pass count to pop multiple elements."""
+        op = _Op(operation_type=_OT.LPOP, key=key)
+        if count is not None:
+            op.int_value = count
+        return op
+
+    @staticmethod
+    def rpop(key: str, count: int | None = None) -> _Op:
+        """Create an RPOP operation. Pass count to pop multiple elements."""
+        op = _Op(operation_type=_OT.RPOP, key=key)
+        if count is not None:
+            op.int_value = count
+        return op
+
+    @staticmethod
+    def lset(key: str, index: int, value: str) -> _Op:
+        """Create an LSET operation."""
+        return _Op(operation_type=_OT.LSET, key=key, int_value=index, value=value)
+
+    @staticmethod
+    def lrem(key: str, count: int, element: str) -> _Op:
+        """Create an LREM operation."""
+        return _Op(operation_type=_OT.LREM, key=key, int_value=count, value=element)
+
+    @staticmethod
+    def xadd(key: str, fields: dict[str, str], id: str = "*") -> _Op:
+        """Create an XADD operation. Pass id='*' for server-assigned id."""
+        op = _Op(operation_type=_OT.XADD, key=key, value=id)
+        op.hash_fields.update(fields)
+        return op
