@@ -787,6 +787,140 @@ class RustyClusterClient:
         return resp.cursor, list(resp.members)
 
     # ──────────────────────────────────────────────
+    # Sorted set operations
+    # ──────────────────────────────────────────────
+
+    def zadd(
+        self,
+        key: str,
+        score: float,
+        member: str,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> int:
+        """Add a member with score to a sorted set.
+
+        Returns 1 if a new member was added, 0 if an existing score was updated.
+        """
+        resp = self._retry.call(
+            self._stub.ZAdd,
+            rustycluster_pb2.ZAddRequest(
+                key=key,
+                score=score,
+                member=member,
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.added
+
+    def zrem(
+        self,
+        key: str,
+        *members: str,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> int:
+        """Remove one or more members from a sorted set.
+
+        Returns the number of members removed (non-existent members are ignored).
+        """
+        resp = self._retry.call(
+            self._stub.ZRem,
+            rustycluster_pb2.ZRemRequest(
+                key=key,
+                members=list(members),
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.removed
+
+    def zrange_by_score(
+        self,
+        key: str,
+        min: float,
+        max: float,
+        with_scores: bool = False,
+        offset: int = 0,
+        count: int = 0,
+    ) -> list:
+        """Return members with scores in [min, max], ordered by score ascending.
+
+        Args:
+            offset: Skip this many results (only applied when count > 0).
+            count: Cap the result set (0 = no limit).
+            with_scores: When True, return list of (member, score) tuples.
+
+        Returns:
+            list[str] or list[tuple[str, float]] when with_scores=True.
+        """
+        resp = self._retry.call(
+            self._stub.ZRangeByScore,
+            rustycluster_pb2.ZRangeByScoreRequest(
+                key=key,
+                min=min,
+                max=max,
+                has_limit=count > 0,
+                offset=offset,
+                count=count,
+                with_scores=with_scores,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        if with_scores:
+            return [(m.member, m.score) for m in resp.members]
+        return [m.member for m in resp.members]
+
+    def zrange(
+        self,
+        key: str,
+        start: int,
+        stop: int,
+        with_scores: bool = False,
+    ) -> list:
+        """Return members in the sorted set by index range [start, stop].
+
+        Negative indices count from the tail (-1 = last element).
+
+        Returns:
+            list[str] or list[tuple[str, float]] when with_scores=True.
+        """
+        resp = self._retry.call(
+            self._stub.ZRange,
+            rustycluster_pb2.ZRangeRequest(
+                key=key,
+                start=start,
+                stop=stop,
+                with_scores=with_scores,
+            ),
+            timeout=self._config.timeout_seconds,
+        )
+        if with_scores:
+            return [(m.member, m.score) for m in resp.members]
+        return [m.member for m in resp.members]
+
+    def zscore(self, key: str, member: str) -> Optional[float]:
+        """Return the score of a member in the sorted set, or None if not found."""
+        resp = self._retry.call(
+            self._stub.ZScore,
+            rustycluster_pb2.ZScoreRequest(key=key, member=member),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.score if resp.found else None
+
+    def zcard(self, key: str) -> int:
+        """Return the number of members in a sorted set."""
+        resp = self._retry.call(
+            self._stub.ZCard,
+            rustycluster_pb2.ZCardRequest(key=key),
+            timeout=self._config.timeout_seconds,
+        )
+        return resp.cardinality
+
+    # ──────────────────────────────────────────────
     # Key operations
     # ──────────────────────────────────────────────
 
@@ -1126,6 +1260,62 @@ class RustyClusterClient:
             self._stub.LPos, req, timeout=self._config.timeout_seconds
         )
         return list(resp.positions)
+
+    def blpop(
+        self,
+        *keys: str,
+        timeout: float = 0.0,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> Optional[tuple[str, str]]:
+        """Blocking left-pop from the first non-empty list among keys.
+
+        Args:
+            timeout: Seconds to block (0.0 = indefinite).
+
+        Returns:
+            (key, value) tuple, or None on timeout.
+        """
+        # Do NOT use self._retry.call() — retrying a blocking call re-blocks
+        # after the server already timed out, doubling the wait.
+        grpc_timeout = (timeout + 5.0) if timeout > 0 else None
+        resp = self._stub.BLPop(
+            rustycluster_pb2.BLPopRequest(
+                keys=list(keys),
+                timeout=timeout,
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=grpc_timeout,
+        )
+        return (resp.key, resp.value) if resp.key else None
+
+    def brpop(
+        self,
+        *keys: str,
+        timeout: float = 0.0,
+        skip_replication: bool = False,
+        skip_site_replication: bool = False,
+    ) -> Optional[tuple[str, str]]:
+        """Blocking right-pop from the first non-empty list among keys.
+
+        Args:
+            timeout: Seconds to block (0.0 = indefinite).
+
+        Returns:
+            (key, value) tuple, or None on timeout.
+        """
+        grpc_timeout = (timeout + 5.0) if timeout > 0 else None
+        resp = self._stub.BRPop(
+            rustycluster_pb2.BRPopRequest(
+                keys=list(keys),
+                timeout=timeout,
+                skip_replication=skip_replication,
+                skip_site_replication=skip_site_replication,
+            ),
+            timeout=grpc_timeout,
+        )
+        return (resp.key, resp.value) if resp.key else None
 
     # ──────────────────────────────────────────────
     # Stream operations

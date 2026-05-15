@@ -199,6 +199,36 @@ class KeyValueServiceStub(object):
                 request_serializer=rustycluster__pb2.SScanRequest.SerializeToString,
                 response_deserializer=rustycluster__pb2.SScanResponse.FromString,
                 _registered_method=True)
+        self.ZAdd = channel.unary_unary(
+                '/rustycluster.KeyValueService/ZAdd',
+                request_serializer=rustycluster__pb2.ZAddRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.ZAddResponse.FromString,
+                _registered_method=True)
+        self.ZRem = channel.unary_unary(
+                '/rustycluster.KeyValueService/ZRem',
+                request_serializer=rustycluster__pb2.ZRemRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.ZRemResponse.FromString,
+                _registered_method=True)
+        self.ZRangeByScore = channel.unary_unary(
+                '/rustycluster.KeyValueService/ZRangeByScore',
+                request_serializer=rustycluster__pb2.ZRangeByScoreRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.ZRangeByScoreResponse.FromString,
+                _registered_method=True)
+        self.ZRange = channel.unary_unary(
+                '/rustycluster.KeyValueService/ZRange',
+                request_serializer=rustycluster__pb2.ZRangeRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.ZRangeResponse.FromString,
+                _registered_method=True)
+        self.ZScore = channel.unary_unary(
+                '/rustycluster.KeyValueService/ZScore',
+                request_serializer=rustycluster__pb2.ZScoreRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.ZScoreResponse.FromString,
+                _registered_method=True)
+        self.ZCard = channel.unary_unary(
+                '/rustycluster.KeyValueService/ZCard',
+                request_serializer=rustycluster__pb2.ZCardRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.ZCardResponse.FromString,
+                _registered_method=True)
         self.SetNX = channel.unary_unary(
                 '/rustycluster.KeyValueService/SetNX',
                 request_serializer=rustycluster__pb2.SetNXRequest.SerializeToString,
@@ -303,6 +333,16 @@ class KeyValueServiceStub(object):
                 '/rustycluster.KeyValueService/LPos',
                 request_serializer=rustycluster__pb2.LPosRequest.SerializeToString,
                 response_deserializer=rustycluster__pb2.LPosResponse.FromString,
+                _registered_method=True)
+        self.BLPop = channel.unary_unary(
+                '/rustycluster.KeyValueService/BLPop',
+                request_serializer=rustycluster__pb2.BLPopRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.BLPopResponse.FromString,
+                _registered_method=True)
+        self.BRPop = channel.unary_unary(
+                '/rustycluster.KeyValueService/BRPop',
+                request_serializer=rustycluster__pb2.BRPopRequest.SerializeToString,
+                response_deserializer=rustycluster__pb2.BRPopResponse.FromString,
                 _registered_method=True)
         self.XAdd = channel.unary_unary(
                 '/rustycluster.KeyValueService/XAdd',
@@ -528,6 +568,43 @@ class KeyValueServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ZAdd(self, request, context):
+        """Sorted set operations
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ZRem(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ZRangeByScore(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ZRange(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ZScore(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ZCard(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SetNX(self, request, context):
         """Key operations
         """
@@ -652,6 +729,18 @@ class KeyValueServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def LPos(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BLPop(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BRPop(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -845,6 +934,36 @@ def add_KeyValueServiceServicer_to_server(servicer, server):
                     request_deserializer=rustycluster__pb2.SScanRequest.FromString,
                     response_serializer=rustycluster__pb2.SScanResponse.SerializeToString,
             ),
+            'ZAdd': grpc.unary_unary_rpc_method_handler(
+                    servicer.ZAdd,
+                    request_deserializer=rustycluster__pb2.ZAddRequest.FromString,
+                    response_serializer=rustycluster__pb2.ZAddResponse.SerializeToString,
+            ),
+            'ZRem': grpc.unary_unary_rpc_method_handler(
+                    servicer.ZRem,
+                    request_deserializer=rustycluster__pb2.ZRemRequest.FromString,
+                    response_serializer=rustycluster__pb2.ZRemResponse.SerializeToString,
+            ),
+            'ZRangeByScore': grpc.unary_unary_rpc_method_handler(
+                    servicer.ZRangeByScore,
+                    request_deserializer=rustycluster__pb2.ZRangeByScoreRequest.FromString,
+                    response_serializer=rustycluster__pb2.ZRangeByScoreResponse.SerializeToString,
+            ),
+            'ZRange': grpc.unary_unary_rpc_method_handler(
+                    servicer.ZRange,
+                    request_deserializer=rustycluster__pb2.ZRangeRequest.FromString,
+                    response_serializer=rustycluster__pb2.ZRangeResponse.SerializeToString,
+            ),
+            'ZScore': grpc.unary_unary_rpc_method_handler(
+                    servicer.ZScore,
+                    request_deserializer=rustycluster__pb2.ZScoreRequest.FromString,
+                    response_serializer=rustycluster__pb2.ZScoreResponse.SerializeToString,
+            ),
+            'ZCard': grpc.unary_unary_rpc_method_handler(
+                    servicer.ZCard,
+                    request_deserializer=rustycluster__pb2.ZCardRequest.FromString,
+                    response_serializer=rustycluster__pb2.ZCardResponse.SerializeToString,
+            ),
             'SetNX': grpc.unary_unary_rpc_method_handler(
                     servicer.SetNX,
                     request_deserializer=rustycluster__pb2.SetNXRequest.FromString,
@@ -949,6 +1068,16 @@ def add_KeyValueServiceServicer_to_server(servicer, server):
                     servicer.LPos,
                     request_deserializer=rustycluster__pb2.LPosRequest.FromString,
                     response_serializer=rustycluster__pb2.LPosResponse.SerializeToString,
+            ),
+            'BLPop': grpc.unary_unary_rpc_method_handler(
+                    servicer.BLPop,
+                    request_deserializer=rustycluster__pb2.BLPopRequest.FromString,
+                    response_serializer=rustycluster__pb2.BLPopResponse.SerializeToString,
+            ),
+            'BRPop': grpc.unary_unary_rpc_method_handler(
+                    servicer.BRPop,
+                    request_deserializer=rustycluster__pb2.BRPopRequest.FromString,
+                    response_serializer=rustycluster__pb2.BRPopResponse.SerializeToString,
             ),
             'XAdd': grpc.unary_unary_rpc_method_handler(
                     servicer.XAdd,
@@ -1868,6 +1997,168 @@ class KeyValueService(object):
             _registered_method=True)
 
     @staticmethod
+    def ZAdd(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/ZAdd',
+            rustycluster__pb2.ZAddRequest.SerializeToString,
+            rustycluster__pb2.ZAddResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ZRem(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/ZRem',
+            rustycluster__pb2.ZRemRequest.SerializeToString,
+            rustycluster__pb2.ZRemResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ZRangeByScore(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/ZRangeByScore',
+            rustycluster__pb2.ZRangeByScoreRequest.SerializeToString,
+            rustycluster__pb2.ZRangeByScoreResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ZRange(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/ZRange',
+            rustycluster__pb2.ZRangeRequest.SerializeToString,
+            rustycluster__pb2.ZRangeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ZScore(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/ZScore',
+            rustycluster__pb2.ZScoreRequest.SerializeToString,
+            rustycluster__pb2.ZScoreResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ZCard(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/ZCard',
+            rustycluster__pb2.ZCardRequest.SerializeToString,
+            rustycluster__pb2.ZCardResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def SetNX(request,
             target,
             options=(),
@@ -2424,6 +2715,60 @@ class KeyValueService(object):
             '/rustycluster.KeyValueService/LPos',
             rustycluster__pb2.LPosRequest.SerializeToString,
             rustycluster__pb2.LPosResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BLPop(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/BLPop',
+            rustycluster__pb2.BLPopRequest.SerializeToString,
+            rustycluster__pb2.BLPopResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BRPop(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rustycluster.KeyValueService/BRPop',
+            rustycluster__pb2.BRPopRequest.SerializeToString,
+            rustycluster__pb2.BRPopResponse.FromString,
             options,
             channel_credentials,
             insecure,

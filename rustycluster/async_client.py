@@ -324,6 +324,54 @@ class AsyncRustyClusterClient:
         )
         return resp.cardinality
 
+    # ─── Sorted set operations ───
+
+    async def zadd(self, key: str, score: float, member: str, skip_replication: bool = False, skip_site_replication: bool = False) -> int:
+        resp = await self._stub.ZAdd(
+            rustycluster_pb2.ZAddRequest(key=key, score=score, member=member, skip_replication=skip_replication, skip_site_replication=skip_site_replication),
+            timeout=self._config.timeout_seconds, metadata=self._metadata(),
+        )
+        return resp.added
+
+    async def zrem(self, key: str, *members: str, skip_replication: bool = False, skip_site_replication: bool = False) -> int:
+        resp = await self._stub.ZRem(
+            rustycluster_pb2.ZRemRequest(key=key, members=list(members), skip_replication=skip_replication, skip_site_replication=skip_site_replication),
+            timeout=self._config.timeout_seconds, metadata=self._metadata(),
+        )
+        return resp.removed
+
+    async def zrange_by_score(self, key: str, min: float, max: float, with_scores: bool = False, offset: int = 0, count: int = 0) -> list:
+        resp = await self._stub.ZRangeByScore(
+            rustycluster_pb2.ZRangeByScoreRequest(key=key, min=min, max=max, has_limit=count > 0, offset=offset, count=count, with_scores=with_scores),
+            timeout=self._config.timeout_seconds, metadata=self._metadata(),
+        )
+        if with_scores:
+            return [(m.member, m.score) for m in resp.members]
+        return [m.member for m in resp.members]
+
+    async def zrange(self, key: str, start: int, stop: int, with_scores: bool = False) -> list:
+        resp = await self._stub.ZRange(
+            rustycluster_pb2.ZRangeRequest(key=key, start=start, stop=stop, with_scores=with_scores),
+            timeout=self._config.timeout_seconds, metadata=self._metadata(),
+        )
+        if with_scores:
+            return [(m.member, m.score) for m in resp.members]
+        return [m.member for m in resp.members]
+
+    async def zscore(self, key: str, member: str) -> Optional[float]:
+        resp = await self._stub.ZScore(
+            rustycluster_pb2.ZScoreRequest(key=key, member=member),
+            timeout=self._config.timeout_seconds, metadata=self._metadata(),
+        )
+        return resp.score if resp.found else None
+
+    async def zcard(self, key: str) -> int:
+        resp = await self._stub.ZCard(
+            rustycluster_pb2.ZCardRequest(key=key),
+            timeout=self._config.timeout_seconds, metadata=self._metadata(),
+        )
+        return resp.cardinality
+
     async def del_multiple(self, *keys: str, skip_replication: bool = False, skip_site_replication: bool = False) -> int:
         resp = await self._stub.DelMultiple(
             rustycluster_pb2.DelMultipleRequest(keys=list(keys), skip_replication=skip_replication, skip_site_replication=skip_site_replication),
@@ -446,6 +494,22 @@ class AsyncRustyClusterClient:
             req.count = count
         resp = await self._stub.LPos(req, timeout=self._config.timeout_seconds, metadata=self._metadata())
         return list(resp.positions)
+
+    async def blpop(self, *keys: str, timeout: float = 0.0, skip_replication: bool = False, skip_site_replication: bool = False) -> Optional[tuple[str, str]]:
+        grpc_timeout = (timeout + 5.0) if timeout > 0 else None
+        resp = await self._stub.BLPop(
+            rustycluster_pb2.BLPopRequest(keys=list(keys), timeout=timeout, skip_replication=skip_replication, skip_site_replication=skip_site_replication),
+            timeout=grpc_timeout, metadata=self._metadata(),
+        )
+        return (resp.key, resp.value) if resp.key else None
+
+    async def brpop(self, *keys: str, timeout: float = 0.0, skip_replication: bool = False, skip_site_replication: bool = False) -> Optional[tuple[str, str]]:
+        grpc_timeout = (timeout + 5.0) if timeout > 0 else None
+        resp = await self._stub.BRPop(
+            rustycluster_pb2.BRPopRequest(keys=list(keys), timeout=timeout, skip_replication=skip_replication, skip_site_replication=skip_site_replication),
+            timeout=grpc_timeout, metadata=self._metadata(),
+        )
+        return (resp.key, resp.value) if resp.key else None
 
     # ─── Stream operations ───
 

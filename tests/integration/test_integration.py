@@ -30,6 +30,7 @@ class MockKeyValueServicer(rustycluster_pb2_grpc.KeyValueServiceServicer):
         self._sets: dict[str, set[str]] = {}
         self._lists: dict[str, list[str]] = {}
         self._streams: dict[str, list[tuple[str, dict[str, str]]]] = {}
+        self._sorted_sets: dict[str, dict[str, float]] = {}  # key -> {member: score}
         self._stream_seq: int = 0
         self._session_token = "test-session-token-abc123"
 
@@ -336,6 +337,72 @@ class MockKeyValueServicer(rustycluster_pb2_grpc.KeyValueServiceServicer):
                 if max_results and len(matches) >= max_results:
                     break
         return rustycluster_pb2.LPosResponse(positions=matches)
+
+    # ─── Sorted set operations ───
+
+    def ZAdd(self, request, context):
+        zset = self._sorted_sets.setdefault(request.key, {})
+        is_new = request.member not in zset
+        zset[request.member] = request.score
+        return rustycluster_pb2.ZAddResponse(added=1 if is_new else 0)
+
+    def ZRem(self, request, context):
+        zset = self._sorted_sets.get(request.key, {})
+        removed = sum(1 for m in request.members if zset.pop(m, None) is not None)
+        return rustycluster_pb2.ZRemResponse(removed=removed)
+
+    def ZRangeByScore(self, request, context):
+        zset = self._sorted_sets.get(request.key, {})
+        items = sorted(
+            ((m, s) for m, s in zset.items() if request.min <= s <= request.max),
+            key=lambda x: x[1],
+        )
+        if request.has_limit:
+            items = items[request.offset: request.offset + request.count]
+        resp = rustycluster_pb2.ZRangeByScoreResponse()
+        for member, score in items:
+            resp.members.add(member=member, score=score)
+        return resp
+
+    def ZRange(self, request, context):
+        zset = self._sorted_sets.get(request.key, {})
+        items = sorted(zset.items(), key=lambda x: x[1])
+        stop = request.stop
+        end = None if stop == -1 else stop + 1
+        items = items[request.start:end]
+        resp = rustycluster_pb2.ZRangeResponse()
+        for member, score in items:
+            resp.members.add(member=member, score=score)
+        return resp
+
+    def ZScore(self, request, context):
+        zset = self._sorted_sets.get(request.key, {})
+        if request.member in zset:
+            return rustycluster_pb2.ZScoreResponse(found=True, score=zset[request.member])
+        return rustycluster_pb2.ZScoreResponse(found=False, score=0.0)
+
+    def ZCard(self, request, context):
+        return rustycluster_pb2.ZCardResponse(
+            cardinality=len(self._sorted_sets.get(request.key, {}))
+        )
+
+    # ─── Blocking list operations ───
+
+    def BLPop(self, request, context):
+        for key in request.keys:
+            lst = self._lists.get(key)
+            if lst:
+                value = lst.pop(0)
+                return rustycluster_pb2.BLPopResponse(key=key, value=value)
+        return rustycluster_pb2.BLPopResponse(key="", value="")
+
+    def BRPop(self, request, context):
+        for key in request.keys:
+            lst = self._lists.get(key)
+            if lst:
+                value = lst.pop()
+                return rustycluster_pb2.BRPopResponse(key=key, value=value)
+        return rustycluster_pb2.BRPopResponse(key="", value="")
 
     # ─── Stream operations ───
 
@@ -703,6 +770,91 @@ class TestIntegrationListStreamBatch:
         entries = client.xread([("integ:bs", "0")])
         assert len(entries) == 1
         assert entries[0][2] == {"f": "v"}
+
+
+class TestIntegrationSortedSetOps:
+    def test_zadd_new_member(self, client):
+        assert client.zadd("integ:z", 1.0, "a") == 1
+
+    def test_zadd_score_update_returns_zero(self, client):
+        client.zadd("integ:z2", 1.0, "a")
+        assert client.zadd("integ:z2", 2.0, "a") == 0
+
+    def test_zcard(self, client):
+        client.zadd("integ:zcard", 1.0, "a")
+        client.zadd("integ:zcard", 2.0, "b")
+        assert client.zcard("integ:zcard") == 2
+
+    def test_zscore_found(self, client):
+        client.zadd("integ:zscore", 3.14, "pi")
+        assert client.zscore("integ:zscore", "pi") == pytest.approx(3.14)
+
+    def test_zscore_missing_returns_none(self, client):
+        assert client.zscore("integ:zscore_miss", "ghost") is None
+
+    def test_zrange_ordered_by_score(self, client):
+        client.zadd("integ:zrange", 3.0, "c")
+        client.zadd("integ:zrange", 1.0, "a")
+        client.zadd("integ:zrange", 2.0, "b")
+        assert client.zrange("integ:zrange", 0, -1) == ["a", "b", "c"]
+
+    def test_zrange_with_scores(self, client):
+        client.zadd("integ:zws", 10.0, "x")
+        client.zadd("integ:zws", 20.0, "y")
+        result = client.zrange("integ:zws", 0, -1, with_scores=True)
+        assert result == [("x", 10.0), ("y", 20.0)]
+
+    def test_zrange_by_score(self, client):
+        client.zadd("integ:zbs", 1.0, "a")
+        client.zadd("integ:zbs", 5.0, "b")
+        client.zadd("integ:zbs", 10.0, "c")
+        assert client.zrange_by_score("integ:zbs", 1.0, 6.0) == ["a", "b"]
+
+    def test_zrange_by_score_with_scores(self, client):
+        client.zadd("integ:zbs2", 2.0, "a")
+        client.zadd("integ:zbs2", 4.0, "b")
+        result = client.zrange_by_score("integ:zbs2", 0, 10, with_scores=True)
+        assert result == [("a", 2.0), ("b", 4.0)]
+
+    def test_zrange_by_score_with_limit(self, client):
+        client.zadd("integ:zlim", 1.0, "a")
+        client.zadd("integ:zlim", 2.0, "b")
+        client.zadd("integ:zlim", 3.0, "c")
+        result = client.zrange_by_score("integ:zlim", 0, 10, offset=1, count=2)
+        assert result == ["b", "c"]
+
+    def test_zrem(self, client):
+        client.zadd("integ:zrem", 1.0, "a")
+        client.zadd("integ:zrem", 2.0, "b")
+        assert client.zrem("integ:zrem", "a", "b") == 2
+        assert client.zcard("integ:zrem") == 0
+
+    def test_zrem_nonexistent_member_ignored(self, client):
+        client.zadd("integ:zrem2", 1.0, "a")
+        assert client.zrem("integ:zrem2", "a", "ghost") == 1
+
+
+class TestIntegrationBlockingPops:
+    def test_blpop_returns_key_and_value(self, client):
+        client.rpush("integ:blq", "first", "second")
+        result = client.blpop("integ:blq", timeout=1.0)
+        assert result == ("integ:blq", "first")
+
+    def test_blpop_empty_list_returns_none(self, client):
+        assert client.blpop("integ:blq_empty_xyz", timeout=0.1) is None
+
+    def test_blpop_checks_keys_in_order(self, client):
+        client.rpush("integ:blq2", "val")
+        result = client.blpop("integ:blq_none_xyz", "integ:blq2", timeout=1.0)
+        assert result == ("integ:blq2", "val")
+
+    def test_brpop_returns_key_and_value(self, client):
+        client.rpush("integ:brq", "first", "last")
+        result = client.brpop("integ:brq", timeout=1.0)
+        assert result == ("integ:brq", "last")
+
+    def test_brpop_empty_list_returns_none(self, client):
+        assert client.brpop("integ:brq_empty_xyz", timeout=0.1) is None
 
 
 class TestIntegrationSystem:

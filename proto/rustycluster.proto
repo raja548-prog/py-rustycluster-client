@@ -48,6 +48,14 @@ service KeyValueService {
   rpc SCard (SCardRequest) returns (SCardResponse);
   rpc SScan (SScanRequest) returns (SScanResponse);
 
+  // Sorted set operations
+  rpc ZAdd (ZAddRequest) returns (ZAddResponse);
+  rpc ZRem (ZRemRequest) returns (ZRemResponse);
+  rpc ZRangeByScore (ZRangeByScoreRequest) returns (ZRangeByScoreResponse);
+  rpc ZRange (ZRangeRequest) returns (ZRangeResponse);
+  rpc ZScore (ZScoreRequest) returns (ZScoreResponse);
+  rpc ZCard (ZCardRequest) returns (ZCardResponse);
+
   // Key operations
   rpc SetNX (SetNXRequest) returns (SetNXResponse);
   rpc Exists (ExistsRequest) returns (ExistsResponse);
@@ -74,6 +82,8 @@ service KeyValueService {
   rpc LPushX (LPushXRequest) returns (LPushXResponse);
   rpc RPushX (RPushXRequest) returns (RPushXResponse);
   rpc LPos (LPosRequest) returns (LPosResponse);
+  rpc BLPop (BLPopRequest) returns (BLPopResponse);
+  rpc BRPop (BRPopRequest) returns (BRPopResponse);
 
   // Stream operations
   rpc XAdd (XAddRequest) returns (XAddResponse);
@@ -553,6 +563,8 @@ message BatchOperation {
     LINSERT = 30;
     LPUSHX = 31;
     RPUSHX = 32;
+    ZADD = 33;
+    ZREM = 34;
   }
 
   OperationType operation_type = 1;
@@ -771,6 +783,34 @@ message LPosResponse {
   repeated int64 positions = 1;  // Empty if no match
 }
 
+// BLPOP: blocking left-pop from the first non-empty list among `keys`.
+// timeout == 0.0 blocks indefinitely (subject to server-level deadline).
+// Returns empty key + value on timeout.
+message BLPopRequest {
+  repeated string keys = 1;
+  double timeout = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message BLPopResponse {
+  string key = 1;    // which key was popped from; empty on timeout
+  string value = 2;  // the popped value; empty on timeout
+}
+
+// BRPOP: blocking right-pop — identical structure.
+message BRPopRequest {
+  repeated string keys = 1;
+  double timeout = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message BRPopResponse {
+  string key = 1;
+  string value = 2;
+}
+
 // ---------------------------------------------------------------------------
 // Stream operations
 // ---------------------------------------------------------------------------
@@ -808,4 +848,94 @@ message XReadRequest {
 
 message XReadResponse {
   repeated XReadEntry entries = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Sorted set operations
+// ---------------------------------------------------------------------------
+
+// ZADD: add a single member with score (RQ scheduler stores one entry per job).
+message ZAddRequest {
+  string key = 1;
+  double score = 2;
+  string member = 3;
+  bool skip_replication = 4;
+  bool skip_site_replication = 5;
+}
+
+message ZAddResponse {
+  // 1 if a new element was added, 0 if an existing score was updated.
+  int64 added = 1;
+}
+
+// ZREM: remove one or more members.
+message ZRemRequest {
+  string key = 1;
+  repeated string members = 2;
+  bool skip_replication = 3;
+  bool skip_site_replication = 4;
+}
+
+message ZRemResponse {
+  // Number of members removed (does not count non-existent members).
+  int64 removed = 1;
+}
+
+// ZRANGEBYSCORE: read members whose scores fall in [min, max].
+// Optional offset/count for LIMIT clause (used by the scheduler to batch
+// "due" jobs). LIMIT applies only when `has_limit` is true.
+message ZRangeByScoreRequest {
+  string key = 1;
+  double min = 2;
+  double max = 3;
+  bool has_limit = 4;
+  int64 offset = 5;
+  int64 count = 6;
+  bool with_scores = 7;
+}
+
+message ZRangeByScoreMember {
+  string member = 1;
+  double score = 2;  // Only meaningful when the request had with_scores = true
+}
+
+message ZRangeByScoreResponse {
+  repeated ZRangeByScoreMember members = 1;
+}
+
+// ZRANGE: index-based slice. Negative indices count from the tail.
+message ZRangeRequest {
+  string key = 1;
+  int64 start = 2;
+  int64 stop = 3;
+  bool with_scores = 4;
+}
+
+message ZRangeMember {
+  string member = 1;
+  double score = 2;  // Only meaningful when the request had with_scores = true
+}
+
+message ZRangeResponse {
+  repeated ZRangeMember members = 1;
+}
+
+// ZSCORE: read a single member's score.
+message ZScoreRequest {
+  string key = 1;
+  string member = 2;
+}
+
+message ZScoreResponse {
+  bool found = 1;
+  double score = 2;
+}
+
+// ZCARD: cardinality of the sorted set.
+message ZCardRequest {
+  string key = 1;
+}
+
+message ZCardResponse {
+  int64 cardinality = 1;
 }

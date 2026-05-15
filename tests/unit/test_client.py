@@ -340,6 +340,118 @@ class TestListOperations:
         assert client.lpos("q", "z") == []
 
 
+class TestSortedSetOperations:
+    def test_zadd_new_member_returns_one(self):
+        client, stub = _make_client()
+        stub.ZAdd.return_value = rustycluster_pb2.ZAddResponse(added=1)
+        assert client.zadd("z", 1.5, "a") == 1
+        req = stub.ZAdd.call_args.args[0]
+        assert req.key == "z"
+        assert req.score == 1.5
+        assert req.member == "a"
+
+    def test_zadd_score_update_returns_zero(self):
+        client, stub = _make_client()
+        stub.ZAdd.return_value = rustycluster_pb2.ZAddResponse(added=0)
+        assert client.zadd("z", 2.0, "a") == 0
+
+    def test_zrem_returns_removed_count(self):
+        client, stub = _make_client()
+        stub.ZRem.return_value = rustycluster_pb2.ZRemResponse(removed=2)
+        assert client.zrem("z", "a", "b") == 2
+        req = stub.ZRem.call_args.args[0]
+        assert list(req.members) == ["a", "b"]
+
+    def test_zrange_by_score_members_only(self):
+        client, stub = _make_client()
+        resp = rustycluster_pb2.ZRangeByScoreResponse()
+        resp.members.add(member="a", score=1.0)
+        resp.members.add(member="b", score=2.0)
+        stub.ZRangeByScore.return_value = resp
+        assert client.zrange_by_score("z", 0, 5) == ["a", "b"]
+        req = stub.ZRangeByScore.call_args.args[0]
+        assert req.has_limit is False
+
+    def test_zrange_by_score_with_scores(self):
+        client, stub = _make_client()
+        resp = rustycluster_pb2.ZRangeByScoreResponse()
+        resp.members.add(member="a", score=1.0)
+        resp.members.add(member="b", score=2.5)
+        stub.ZRangeByScore.return_value = resp
+        result = client.zrange_by_score("z", 0, 5, with_scores=True)
+        assert result == [("a", 1.0), ("b", 2.5)]
+
+    def test_zrange_by_score_with_limit_sets_has_limit(self):
+        client, stub = _make_client()
+        stub.ZRangeByScore.return_value = rustycluster_pb2.ZRangeByScoreResponse()
+        client.zrange_by_score("z", 0, 10, offset=2, count=5)
+        req = stub.ZRangeByScore.call_args.args[0]
+        assert req.has_limit is True
+        assert req.offset == 2
+        assert req.count == 5
+
+    def test_zrange_members_only(self):
+        client, stub = _make_client()
+        resp = rustycluster_pb2.ZRangeResponse()
+        resp.members.add(member="a", score=1.0)
+        resp.members.add(member="b", score=2.0)
+        stub.ZRange.return_value = resp
+        assert client.zrange("z", 0, -1) == ["a", "b"]
+
+    def test_zrange_with_scores(self):
+        client, stub = _make_client()
+        resp = rustycluster_pb2.ZRangeResponse()
+        resp.members.add(member="a", score=1.0)
+        stub.ZRange.return_value = resp
+        assert client.zrange("z", 0, -1, with_scores=True) == [("a", 1.0)]
+
+    def test_zscore_found(self):
+        client, stub = _make_client()
+        stub.ZScore.return_value = rustycluster_pb2.ZScoreResponse(found=True, score=3.14)
+        assert client.zscore("z", "a") == pytest.approx(3.14)
+
+    def test_zscore_not_found_returns_none(self):
+        client, stub = _make_client()
+        stub.ZScore.return_value = rustycluster_pb2.ZScoreResponse(found=False, score=0.0)
+        assert client.zscore("z", "missing") is None
+
+    def test_zcard_returns_cardinality(self):
+        client, stub = _make_client()
+        stub.ZCard.return_value = rustycluster_pb2.ZCardResponse(cardinality=7)
+        assert client.zcard("z") == 7
+
+    def test_blpop_returns_key_value_tuple(self):
+        client, stub = _make_client()
+        stub.BLPop.return_value = rustycluster_pb2.BLPopResponse(key="q", value="task1")
+        result = client.blpop("q", timeout=1.0)
+        assert result == ("q", "task1")
+        req = stub.BLPop.call_args.args[0]
+        assert list(req.keys) == ["q"]
+        assert req.timeout == 1.0
+
+    def test_blpop_timeout_returns_none(self):
+        client, stub = _make_client()
+        stub.BLPop.return_value = rustycluster_pb2.BLPopResponse(key="", value="")
+        assert client.blpop("q", timeout=0.1) is None
+
+    def test_blpop_zero_timeout_passes_none_grpc_deadline(self):
+        client, stub = _make_client()
+        stub.BLPop.return_value = rustycluster_pb2.BLPopResponse(key="q", value="v")
+        client.blpop("q", timeout=0.0)
+        _, kwargs = stub.BLPop.call_args
+        assert kwargs.get("timeout") is None
+
+    def test_brpop_returns_key_value_tuple(self):
+        client, stub = _make_client()
+        stub.BRPop.return_value = rustycluster_pb2.BRPopResponse(key="q", value="last")
+        assert client.brpop("q", timeout=1.0) == ("q", "last")
+
+    def test_brpop_timeout_returns_none(self):
+        client, stub = _make_client()
+        stub.BRPop.return_value = rustycluster_pb2.BRPopResponse(key="", value="")
+        assert client.brpop("q", timeout=0.1) is None
+
+
 class TestStreamOperations:
     def test_xadd_default_id_is_star_and_returns_resolved(self):
         client, stub = _make_client()
