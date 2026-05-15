@@ -147,6 +147,8 @@ class Worker:
 
             started_reg.remove(job.id)
             finished_reg.add(job.id)
+            self._apply_ttl(job._hash_key(), job._result_ttl)
+            self._trigger_dependents(job)
             logger.info("Job %s finished successfully.", job.id)
 
         except Exception:
@@ -162,6 +164,7 @@ class Worker:
                 job._save()
                 started_reg.remove(job.id)
                 failed_reg.add(job.id)
+                self._apply_ttl(job._hash_key(), job._failure_ttl)
                 logger.warning("Job %s moved to FailedJobRegistry.", job.id)
 
         finally:
@@ -221,6 +224,39 @@ class Worker:
         if exc_box:
             raise exc_box[0]
         return result_box[0] if result_box else None
+
+    def _apply_ttl(self, key: str, ttl: int) -> None:
+        """Apply result_ttl / failure_ttl to a job hash key.
+
+        ttl == 0  → delete immediately
+        ttl  > 0  → set expiry in seconds
+        ttl == -1 → keep forever (no-op)
+        """
+        if ttl == 0:
+            self._conn.delete(key)
+        elif ttl > 0:
+            self._conn.set_expiry(key, ttl)
+
+    def _trigger_dependents(self, job: "Job") -> None:
+        """Move any jobs that were waiting on job to QUEUED after it finishes."""
+        dependents_key = f"rc:dependents:{job.id}"
+        dep_ids = self._conn.smembers(dependents_key)
+        if not dep_ids:
+            return
+        from rustycluster.rq.queue import Queue
+        from rustycluster.rq.registries import DeferredJobRegistry
+        for dep_id in dep_ids:
+            try:
+                dep_job = Job.fetch(dep_id, self._conn)
+                if dep_job._status == JobStatus.DEFERRED:
+                    dep_job._status = JobStatus.QUEUED
+                    dep_job._save()
+                    self._conn.rpush(f"rc:queue:{dep_job.origin}", dep_id)
+                    DeferredJobRegistry(name=dep_job.origin, connection=self._conn).remove(dep_id)
+                    logger.info("Deferred job %s moved to queue after dependency %s finished.", dep_id, job.id)
+            except Exception:
+                logger.warning("Could not unblock dependent job %s.", dep_id)
+        self._conn.delete(dependents_key)
 
     # ------------------------------------------------------------------
     # Signal handling (graceful shutdown on Ctrl-C / SIGTERM)

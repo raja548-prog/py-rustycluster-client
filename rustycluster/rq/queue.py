@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from rustycluster.rq.job import Job
+from rustycluster.rq.job import Job, JobStatus
 from rustycluster.rq.retry import Retry
 
 if TYPE_CHECKING:
@@ -68,9 +68,21 @@ class Queue:
         return self._conn.llen(self.key)
 
     @property
+    def count(self) -> int:
+        return len(self)
+
+    @property
     def job_ids(self) -> list[str]:
         """All queued job IDs in FIFO order (oldest first)."""
         return self._conn.lrange(self.key, 0, -1)
+
+    def empty(self) -> int:
+        """Delete all queued jobs and the queue itself. Returns number of jobs removed."""
+        job_ids = self.job_ids
+        for jid in job_ids:
+            self._conn.delete(f"rc:job:{jid}")
+        self._conn.delete(self.key)
+        return len(job_ids)
 
     # ------------------------------------------------------------------
     # RQ-compatible enqueue
@@ -111,6 +123,20 @@ class Queue:
             retry_max=retry_max,
             retry_intervals=retry_intervals,
         )
+
+        depends_on = meta.get("depends_on")
+        if depends_on is not None:
+            dep_id = depends_on.id if isinstance(depends_on, Job) else str(depends_on)
+            dep_data = self._conn.hget_all(f"rc:job:{dep_id}")
+            dep_finished = dep_data.get("status") == "finished"
+            if not dep_finished:
+                job._status = JobStatus.DEFERRED
+                job._depends_on = dep_id
+                job._save()
+                self._conn.sadd(f"rc:dependents:{dep_id}", job.id)
+                from rustycluster.rq.registries import DeferredJobRegistry
+                DeferredJobRegistry(name=self._name, connection=self._conn).add(job.id)
+                return job
 
         if meta.get("at_front"):
             self._conn.lpush(self.key, job.id)

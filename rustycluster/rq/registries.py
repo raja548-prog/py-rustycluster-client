@@ -79,3 +79,9 @@ class FailedJobRegistry(_BaseRegistry):
     """Tracks jobs that failed after exhausting all retries."""
 
     key_prefix = "rc:failed"
+
+
+class DeferredJobRegistry(_BaseRegistry):
+    """Tracks jobs waiting for a dependency to finish."""
+
+    key_prefix = "rc:deferred"

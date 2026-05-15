@@ -24,7 +24,7 @@ Job.fetch(id, connection=conn), worker.work(burst=True), registry.get_job_ids() 
 
 from rustycluster.rq.job import Job, JobStatus
 from rustycluster.rq.queue import Queue
-from rustycluster.rq.registries import FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
+from rustycluster.rq.registries import DeferredJobRegistry, FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
 from rustycluster.rq.retry import Retry
 from rustycluster.rq.worker import Worker, get_current_job
 
@@ -37,5 +37,6 @@ __all__ = [
     "StartedJobRegistry",
     "FinishedJobRegistry",
     "FailedJobRegistry",
+    "DeferredJobRegistry",
     "get_current_job",
 ]

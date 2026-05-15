@@ -53,6 +53,7 @@ def _ref_to_func(ref: str) -> Any:
 
 class JobStatus(str, Enum):
     QUEUED = "queued"
+    DEFERRED = "deferred"
     STARTED = "started"
     FINISHED = "finished"
     FAILED = "failed"
@@ -89,6 +90,8 @@ class Job:
         self._job_timeout: int = 180
         self._result_ttl: int = 500
         self._failure_ttl: int = -1
+        self._meta: dict = {}
+        self._depends_on: str = ""  # comma-separated dependency job IDs
 
     # ------------------------------------------------------------------
     # RQ-compatible public properties
@@ -122,6 +125,22 @@ class Job:
     def exc_info(self) -> str:
         return self._exc_info
 
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @property
+    def timeout(self) -> int:
+        return self._job_timeout
+
+    @property
+    def meta(self) -> dict:
+        return self._meta
+
+    @meta.setter
+    def meta(self, value: dict) -> None:
+        self._meta = value
+
     # ------------------------------------------------------------------
     # RQ-compatible methods
     # ------------------------------------------------------------------
@@ -143,6 +162,14 @@ class Job:
     def refresh(self) -> None:
         """Reload all fields from the cluster."""
         self._load(self._conn.hget_all(_JOB_KEY_PREFIX + self._id))
+
+    def delete(self) -> None:
+        """Delete this job's data from the cluster."""
+        self._delete()
+
+    def save_meta(self) -> None:
+        """Persist job.meta to the cluster."""
+        self._conn.hset(self._hash_key(), "meta_b64", _serialize(self._meta))
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -171,6 +198,8 @@ class Job:
             "job_timeout": str(self._job_timeout),
             "result_ttl": str(self._result_ttl),
             "failure_ttl": str(self._failure_ttl),
+            "meta_b64": _serialize(self._meta),
+            "depends_on": self._depends_on,
         }
 
     def _save(self) -> None:
@@ -197,6 +226,8 @@ class Job:
         self._job_timeout = int(data.get("job_timeout", "180"))
         self._result_ttl = int(data.get("result_ttl", "500"))
         self._failure_ttl = int(data.get("failure_ttl", "-1"))
+        self._meta = _deserialize(data.get("meta_b64")) or {}
+        self._depends_on = data.get("depends_on", "")
 
     def _get_callable(self) -> Any:
         return _ref_to_func(self._func_name)
