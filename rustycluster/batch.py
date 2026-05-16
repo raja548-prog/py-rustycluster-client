@@ -154,8 +154,8 @@ class BatchOperationBuilder:
         """Create an HSET_BYTES operation (binary safe)."""
         return _Op(
             operation_type=_OT.HSET_BYTES,
-            key=key.decode("latin-1"),
-            field=field.decode("latin-1"),
+            bytes_key=key,
+            bytes_field=field,
             bytes_value=value,
         )
 

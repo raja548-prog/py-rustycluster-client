@@ -584,6 +584,8 @@ message BatchOperation {
   optional bytes bytes_value = 15;  // For binary operations (HSET_BYTES)
   optional int64 seconds = 16;  // For HEXPIRE operation
   map<string, bytes> bytes_fields = 17;  // For binary hash operations
+  optional bytes bytes_key = 18;    // Binary-safe key for ops whose key may contain non-UTF-8 bytes (HSET_BYTES)
+  optional bytes bytes_field = 19;  // Binary-safe field for ops whose field may contain non-UTF-8 bytes (HSET_BYTES)
 }
 
 message BatchWriteRequest {
